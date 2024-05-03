@@ -6,19 +6,19 @@ pub mod goonmetrics {
         pub price_data: PriceData,
     }
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
     pub struct PriceData {
         #[serde(rename = "$value")]
-        types: Vec<Types>,
+        pub types: Vec<Types>,
     }
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
     #[serde(rename_all = "snake_case")]
-    enum Types {
+    pub enum Types {
         Type(ItemType),
     }
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
     pub struct ItemType {
         pub id: i32,
         pub updated: String,
@@ -27,16 +27,16 @@ pub mod goonmetrics {
         pub sell: Sell,
     }
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
     pub struct All {
         pub weekly_movement: String,
     }
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
     pub struct Sell {
         pub listed: String,
         pub min: String,
     }
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
     pub struct Buy {
         pub listed: String,
         pub max: String,

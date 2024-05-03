@@ -9,7 +9,7 @@ use serde_xml_rs::{from_str, to_string};
 
 use tokio;
 mod goonmetrics;
-use crate::goonmetrics::goonmetrics::Goonmetrics;
+use crate::goonmetrics::goonmetrics::*;
 use std::path::Path;
 
 error_chain! {
@@ -19,7 +19,7 @@ error_chain! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 struct ItemData {
     type_id: i32,
     type_volume: f32,
@@ -28,7 +28,7 @@ struct ItemData {
     abroad_trade_data: Option<TradeData>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 struct TradeData {
     updated: String,
     weekly_movement: f64,
@@ -89,11 +89,12 @@ fn get_item_data_from_db(names: Vec<&str>) -> Vec<ItemData> {
         .collect()
 }
 
-async fn get_item_data_from_api(station_id: &str, item_ids: Vec<i32>) -> Result<Vec<PriceData>> {
-    let item_ids = item_ids
+async fn get_item_data_from_api(station_id: &str, item_ids: &Vec<i32>) -> Result<Vec<PriceData>> {
+    let item_ids = &item_ids
         .into_iter()
         .map(|id| id.to_string() + ",")
         .collect::<String>();
+
     let jita_url = format!(
         "https://goonmetrics.apps.goonswarm.org/api/price_data/?station_id={station_id}&type_id={item_ids}"
     );
@@ -108,73 +109,291 @@ async fn get_item_data_from_api(station_id: &str, item_ids: Vec<i32>) -> Result<
     return Ok(vec![pd]);
 }
 
+fn merge_trade_data(
+    items_data: &Vec<ItemData>,
+    jita_trade_data: &Vec<PriceData>,
+    abroad_trade_data: &Vec<PriceData>,
+) -> Vec<ItemData> {
+    let result: Vec<_> = items_data
+        .into_iter()
+        .map(|item| {
+            let mut enriched_item = ItemData {
+                type_name: item.type_name.clone(),
+                type_id: item.type_id,
+                type_volume: item.type_volume,
+                jita_trade_data: None,
+                abroad_trade_data: None,
+            };
+            let id = item.type_id;
+            let jt = &jita_trade_data[0].types;
+
+            let item_jita_trade_data = jt.into_iter().find(|jtd| match jtd {
+                Types::Type(item_type) => {
+                    return item_type.id == id;
+                }
+            });
+
+
+            match item_jita_trade_data {
+                Some(&goonmetrics::goonmetrics::Types::Type(ref item_type)) => {
+                    enriched_item.jita_trade_data = Some(TradeData {
+                        updated: item_type.updated.clone(),
+                        weekly_movement: item_type
+                            .all
+                            .weekly_movement
+                            .parse::<f64>()
+                            .expect("Fail to parse"),
+                        sell_listed: item_type.sell.listed.parse::<i64>().expect("Fail to parse"),
+                        sell_min: item_type.sell.min.parse::<f64>().expect("Fail to parse"),
+                        buy_listed: item_type.buy.listed.parse::<i64>().expect("Fail to parse"),
+                        buy_max: item_type.buy.max.parse::<f64>().expect("Fail to parse"),
+                    })
+                }
+                _ => panic!("Terrible wrong shit"),
+            }
+
+            let at = &abroad_trade_data[0].types;
+            let item_abroad_trade_data = at.into_iter().find(|atd| match atd {
+                Types::Type(item_type) => {
+                    return item_type.id == id;
+                }
+            });
+
+            match item_abroad_trade_data {
+                Some(&goonmetrics::goonmetrics::Types::Type(ref item_type)) => {
+                    enriched_item.abroad_trade_data = Some(TradeData {
+                        updated: item_type.updated.clone(),
+                        weekly_movement: item_type
+                            .all
+                            .weekly_movement
+                            .parse::<f64>()
+                            .expect("Fail to parse"),
+                        sell_listed: item_type.sell.listed.parse::<i64>().expect("Fail to parse"),
+                        sell_min: item_type.sell.min.parse::<f64>().expect("Fail to parse"),
+                        buy_listed: item_type.buy.listed.parse::<i64>().expect("Fail to parse"),
+                        buy_max: item_type.buy.max.parse::<f64>().expect("Fail to parse"),
+                    })
+                }
+                _ => panic!("Terrible wrong shit"),
+            }
+
+            return enriched_item;
+        })
+        .collect();
+
+    return result;
+
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let name = "Tritanium";
     let names: Vec<&str> = vec!["Tritanium", "Buzzard"];
 
-    let items: Vec<ItemData> = get_item_data_from_db(names);
-    println!("Bulk from db:\n{:?}", items);
+    let items_data: &Vec<ItemData> = &get_item_data_from_db(names);
+    println!("Bulk from db:\n{:?}", items_data);
 
-    let item_ids: Vec<i32> = items.into_iter().map(|item| item.type_id).collect();
+    let item_ids: &Vec<i32> = &items_data.into_iter().map(|item| item.type_id).collect();
     println!("IDIS:\n{:?}", item_ids);
 
     let jita_id = "60003760";
     let goon_keep_id = "1030049082711";
 
-    let data = get_item_data_from_api(&jita_id, item_ids).await;
+    let jita_trade_data = get_item_data_from_api(&jita_id, &item_ids).await;
+    println!("JITA TRADE DATA:\n{:?}", jita_trade_data);
 
-    println!("DATA:\n{:?}", data);
-    // let trit_id = 34;
-    // let jita_url = format!(
-    //     "https://goonmetrics.apps.goonswarm.org/api/price_data/?station_id={jita_id}&type_id=34,35"
-    // );
+    let goon_trade_data = get_item_data_from_api(&goon_keep_id, &item_ids).await;
+    println!("GOON TRADE DATA:\n{:?}", goon_trade_data);
 
-    // let res = reqwest::get(jita_url).await?;
-    // println!("Status: {}", res.status());
-    // println!("Headers:\n{:#?}", res.headers());
+    let merged_trade_data = merge_trade_data(
+        &items_data,
+        &jita_trade_data.expect("hui"),
+        &goon_trade_data.expect("hui"),
+    );
+    println!("MERGED:\n{:?}", merged_trade_data);
 
-    // let body = res.text().await?;
-    // println!("Body:\n{}", body);
-
-    // let data: Goonmetrics = from_str(&body).unwrap();
-    // let pd = data.price_data;
-
-    // println!("pd:\n{:?}", pd);
-    // let jita_trade_data = TradeData {
-    //     updated: pd.updated,
-    //     weekly_movement: pd.all.weekly_movement.parse::<f64>().unwrap(),
-    //     buy_max: pd.buy.max.parse().unwrap(),
-    //     buy_listed: pd.buy.listed.parse().unwrap(),
-    //     sell_min: pd.sell.min.parse().unwrap(),
-    //     sell_listed: pd.sell.listed.parse().unwrap(),
-    // };
-    // println!("jita trade:\n{:?}", jita_trade_data);
-    // let goon_url = format!(
-    //     "https://goonmetrics.apps.goonswarm.org/api/price_data/?station_id={goon_keep_id}&type_id={trit_id}"
-    // );
-    // let res = reqwest::get(goon_url).await?;
-    // let body = res.text().await?;
-    // let data: Goonmetrics = from_str(&body).unwrap();
-    // let pd = data.price_data;
-    // println!("pd:\n{:?}", pd);
-    // let goon_trade_data = TradeData {
-    //     updated: pd.updated,
-    //     weekly_movement: pd.all.weekly_movement.parse::<f64>().unwrap(),
-    //     buy_max: pd.buy.max.parse().unwrap(),
-    //     buy_listed: pd.buy.listed.parse().unwrap(),
-    //     sell_min: pd.sell.min.parse().unwrap(),
-    //     sell_listed: pd.sell.listed.parse().unwrap(),
-    // };
-    // println!("goon trade:\n{:?}", goon_trade_data);
-
-    // let type_market_info = ItemData {
-    //     type_id: stored_type_data.as_mut().unwrap().type_id,
-    //     type_volume: stored_type_data.as_mut().unwrap().type_volume,
-    //     type_name: name.to_string(),
-    //     jita_trade_data: jita_trade_data,
-    //     abroad_trade_data: goon_trade_data,
-    // };
-    // print!("All trade data:\n{:?}", type_market_info);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_stuff() {
+        let items_data: &Vec<ItemData> = &[
+            ItemData {
+                type_id: 34,
+                type_volume: 0.01,
+                type_name: "Tritanium".to_string(),
+                jita_trade_data: None,
+                abroad_trade_data: None,
+            },
+            ItemData {
+                type_id: 11192,
+                type_volume: 19400.0,
+                type_name: "Buzzard".to_string(),
+                jita_trade_data: None,
+                abroad_trade_data: None,
+            },
+        ]
+        .to_vec();
+
+        let mock_jita_trade_data: Result<Vec<PriceData>> = Ok([PriceData {
+            types: [
+                Types::Type(ItemType {
+                    id: 34,
+                    updated: "2024-05-03T13:36:22Z".to_string(),
+                    all: All {
+                        weekly_movement: "3".to_string(),
+                    },
+                    buy: Buy {
+                        listed: "3".to_string(),
+                        max: "3".to_string(),
+                    },
+                    sell: Sell {
+                        listed: "3".to_string(),
+                        min: "3".to_string(),
+                    },
+                }),
+                Types::Type(ItemType {
+                    id: 11192,
+                    updated: "2024-05-03T13:36:22Z".to_string(),
+                    all: All {
+                        weekly_movement: "3".to_string(),
+                    },
+                    buy: Buy {
+                        listed: "3".to_string(),
+                        max: "3".to_string(),
+                    },
+                    sell: Sell {
+                        listed: "3".to_string(),
+                        min: "3".to_string(),
+                    },
+                }),
+            ]
+            .to_vec(),
+        }]
+        .to_vec());
+
+        let mock_goon_trade_data: Result<Vec<PriceData>> = Ok([PriceData {
+            types: [
+                Types::Type(ItemType {
+                    id: 34,
+                    updated: "2024-05-03T13:36:22Z".to_string(),
+                    all: All {
+                        weekly_movement: "3".to_string(),
+                    },
+                    buy: Buy {
+                        listed: "3".to_string(),
+                        max: "3".to_string(),
+                    },
+                    sell: Sell {
+                        listed: "3".to_string(),
+                        min: "3".to_string(),
+                    },
+                }),
+                Types::Type(ItemType {
+                    id: 11192,
+                    updated: "2024-05-03T13:36:22Z".to_string(),
+                    all: All {
+                        weekly_movement: "3".to_string(),
+                    },
+                    buy: Buy {
+                        listed: "3".to_string(),
+                        max: "3".to_string(),
+                    },
+                    sell: Sell {
+                        listed: "3".to_string(),
+                        min: "3".to_string(),
+                    },
+                }),
+            ]
+            .to_vec(),
+        }]
+        .to_vec());
+
+        let desired_merge_result = vec![
+            ItemData {
+                type_id: 34,
+                type_volume: 0.01,
+                type_name: "Tritanium".to_string(),
+                jita_trade_data: Some(TradeData {
+                    updated: "2024-05-03T13:36:22Z".to_string(),
+                    weekly_movement: "3"
+                        .to_string()
+                        .parse::<f64>()
+                        .expect("CANT PARSE!"),
+                    buy_max: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
+                    buy_listed: "3"
+                        .to_string()
+                        .parse::<i64>()
+                        .expect("CANT PARSE!"),
+                    sell_min: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
+                    sell_listed: "3"
+                        .to_string()
+                        .parse::<i64>()
+                        .expect("CANT PARSE!"),
+                }),
+                abroad_trade_data: Some(TradeData {
+                    updated: "2024-05-03T13:36:22Z".to_string(),
+                    weekly_movement: "3"
+                        .to_string()
+                        .parse::<f64>()
+                        .expect("CANT PARSE!"),
+                    buy_max: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
+                    buy_listed: "3"
+                        .to_string()
+                        .parse::<i64>()
+                        .expect("CANT PARSE!"),
+                    sell_min: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
+                    sell_listed: "3"
+                        .to_string()
+                        .parse::<i64>()
+                        .expect("CANT PARSE!"),
+                }),
+            },
+            ItemData {
+                type_id: 11192,
+                type_volume: 19400.0,
+                type_name: "Buzzard".to_string(),
+                jita_trade_data: Some(TradeData {
+                    updated: "2024-05-03T13:36:22Z".to_string(),
+                    weekly_movement: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
+                    buy_max: "3"
+                        .to_string()
+                        .parse::<f64>()
+                        .expect("CANT PARSE!"),
+                    buy_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
+                    sell_min: "3"
+                        .to_string()
+                        .parse::<f64>()
+                        .expect("CANT PARSE!"),
+                    sell_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
+                }),
+                abroad_trade_data: Some(TradeData {
+                    updated: "2024-05-03T13:36:22Z".to_string(),
+                    weekly_movement: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
+                    buy_max: "3"
+                        .to_string()
+                        .parse::<f64>()
+                        .expect("CANT PARSE!"),
+                    buy_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
+                    sell_min: "3"
+                        .to_string()
+                        .parse::<f64>()
+                        .expect("CANT PARSE!"),
+                    sell_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
+                }),
+            },
+        ];
+
+        let actual_merge_result = merge_trade_data(
+            items_data,
+            &mock_jita_trade_data.expect("aaa"),
+            &mock_goon_trade_data.expect("aaa"),
+        );
+
+        assert_eq!(desired_merge_result, actual_merge_result);
+    }
 }
