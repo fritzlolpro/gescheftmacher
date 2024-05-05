@@ -12,6 +12,10 @@ mod goonmetrics;
 use crate::goonmetrics::goonmetrics::*;
 use std::path::Path;
 
+use slint::{slint, Model, ModelRc, SharedString, TableColumn, VecModel};
+use std::rc::Rc;
+
+const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
 error_chain! {
     foreign_links {
         Io(std::io::Error);
@@ -38,6 +42,43 @@ struct TradeData {
     sell_listed: i64,
 }
 
+pub trait CalculateFields {
+    fn get_shipping_cost(&self) -> f64;
+}
+
+impl CalculateFields for ItemData {
+    fn get_shipping_cost(&self) -> f64 {
+        let shipping_price = &self.type_volume * DELIVERY_PRICE_PER_CUBOMETR;
+        return shipping_price as f64;
+    }
+}
+
+slint::include_modules!();
+fn render_ui() -> std::result::Result<(), slint::PlatformError> {
+    let ui = AppWindow::new()?;
+
+    ui.on_request_increase_value({
+        let ui_handle = ui.as_weak();
+        move || {
+            let ui = ui_handle.unwrap();
+            ui.set_counter(ui.get_counter() + 1);
+        }
+    });
+
+    ui.on_set_columns({
+        let ui_handle = ui.as_weak();
+        move || {
+            let ui = ui_handle.unwrap();
+
+            let nc: ModelRc<TableColumn> = ModelRc::from(
+               "a"
+            ); 
+            ui.set_item_columns(nc);
+        }
+    });
+
+    ui.run()
+}
 #[derive(Debug)]
 struct ItemDataFromDb {
     type_id: i32,
@@ -133,7 +174,6 @@ fn merge_trade_data(
                 }
             });
 
-
             match item_jita_trade_data {
                 Some(&goonmetrics::goonmetrics::Types::Type(ref item_type)) => {
                     enriched_item.jita_trade_data = Some(TradeData {
@@ -182,7 +222,6 @@ fn merge_trade_data(
         .collect();
 
     return result;
-
 }
 
 #[tokio::main]
@@ -211,6 +250,14 @@ async fn main() -> Result<()> {
         &goon_trade_data.expect("hui"),
     );
     println!("MERGED:\n{:?}", merged_trade_data);
+    for ele in merged_trade_data {
+        ele.get_shipping_cost();
+        println!("VECYOOTRYSS! \n {:?}", vec![ele])
+    }
+    match render_ui() {
+        Err(_) => panic!("aaaaa"),
+        _ => (),
+    }
 
     Ok(())
 }
@@ -320,37 +367,19 @@ mod tests {
                 type_name: "Tritanium".to_string(),
                 jita_trade_data: Some(TradeData {
                     updated: "2024-05-03T13:36:22Z".to_string(),
-                    weekly_movement: "3"
-                        .to_string()
-                        .parse::<f64>()
-                        .expect("CANT PARSE!"),
+                    weekly_movement: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
                     buy_max: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
-                    buy_listed: "3"
-                        .to_string()
-                        .parse::<i64>()
-                        .expect("CANT PARSE!"),
+                    buy_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
                     sell_min: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
-                    sell_listed: "3"
-                        .to_string()
-                        .parse::<i64>()
-                        .expect("CANT PARSE!"),
+                    sell_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
                 }),
                 abroad_trade_data: Some(TradeData {
                     updated: "2024-05-03T13:36:22Z".to_string(),
-                    weekly_movement: "3"
-                        .to_string()
-                        .parse::<f64>()
-                        .expect("CANT PARSE!"),
+                    weekly_movement: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
                     buy_max: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
-                    buy_listed: "3"
-                        .to_string()
-                        .parse::<i64>()
-                        .expect("CANT PARSE!"),
+                    buy_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
                     sell_min: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
-                    sell_listed: "3"
-                        .to_string()
-                        .parse::<i64>()
-                        .expect("CANT PARSE!"),
+                    sell_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
                 }),
             },
             ItemData {
@@ -360,29 +389,17 @@ mod tests {
                 jita_trade_data: Some(TradeData {
                     updated: "2024-05-03T13:36:22Z".to_string(),
                     weekly_movement: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
-                    buy_max: "3"
-                        .to_string()
-                        .parse::<f64>()
-                        .expect("CANT PARSE!"),
+                    buy_max: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
                     buy_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
-                    sell_min: "3"
-                        .to_string()
-                        .parse::<f64>()
-                        .expect("CANT PARSE!"),
+                    sell_min: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
                     sell_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
                 }),
                 abroad_trade_data: Some(TradeData {
                     updated: "2024-05-03T13:36:22Z".to_string(),
                     weekly_movement: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
-                    buy_max: "3"
-                        .to_string()
-                        .parse::<f64>()
-                        .expect("CANT PARSE!"),
+                    buy_max: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
                     buy_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
-                    sell_min: "3"
-                        .to_string()
-                        .parse::<f64>()
-                        .expect("CANT PARSE!"),
+                    sell_min: "3".to_string().parse::<f64>().expect("CANT PARSE!"),
                     sell_listed: "3".to_string().parse::<i64>().expect("CANT PARSE!"),
                 }),
             },

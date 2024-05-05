@@ -1,0 +1,35 @@
+import { Button, VerticalBox, StandardTableView, ScrollView  } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    in-out property <int> counter: 42;
+    callback request-increase-value();
+
+    in-out property <[[StandardListViewItem]]> item_rows;
+    in-out property <[TableColumn]> item_columns;
+    callback set_columns();
+    // VerticalBox {
+        // Text {
+        //     text: "Counter: \{root.counter}";
+        // }
+
+        // Button {
+        //     text: "Increase value";
+        //     clicked => {
+        //         root.request-increase-value();
+        //     }
+        // }
+
+        ScrollView {
+            width: 100%;
+            height: 100%;
+            // viewport-width: 300px;
+            // viewport-height: 300px;
+            StandardTableView {
+                // width: 230px;
+                // height: 200px;
+                columns: item_columns;
+                rows: item_rows;
+            }
+        }
+    // }
+}
