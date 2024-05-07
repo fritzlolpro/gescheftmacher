@@ -12,9 +12,6 @@ mod goonmetrics;
 use crate::goonmetrics::goonmetrics::*;
 use std::path::Path;
 
-use slint::{slint, Model, ModelRc, SharedString, TableColumn, VecModel};
-use std::rc::Rc;
-
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
 error_chain! {
     foreign_links {
@@ -53,32 +50,6 @@ impl CalculateFields for ItemData {
     }
 }
 
-slint::include_modules!();
-fn render_ui() -> std::result::Result<(), slint::PlatformError> {
-    let ui = AppWindow::new()?;
-
-    ui.on_request_increase_value({
-        let ui_handle = ui.as_weak();
-        move || {
-            let ui = ui_handle.unwrap();
-            ui.set_counter(ui.get_counter() + 1);
-        }
-    });
-
-    ui.on_set_columns({
-        let ui_handle = ui.as_weak();
-        move || {
-            let ui = ui_handle.unwrap();
-
-            let nc: ModelRc<TableColumn> = ModelRc::from(
-               "a"
-            ); 
-            ui.set_item_columns(nc);
-        }
-    });
-
-    ui.run()
-}
 #[derive(Debug)]
 struct ItemDataFromDb {
     type_id: i32,
