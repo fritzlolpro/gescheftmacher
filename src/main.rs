@@ -12,6 +12,9 @@ mod goonmetrics;
 use crate::goonmetrics::goonmetrics::*;
 use std::path::Path;
 
+use egui::{Key, Vec2};
+use egui_extras::{Column, TableBuilder};
+
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
 error_chain! {
     foreign_links {
@@ -197,6 +200,7 @@ fn merge_trade_data(
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let name = "Tritanium";
     let names: Vec<&str> = vec!["Tritanium", "Buzzard"];
 
@@ -225,7 +229,11 @@ async fn main() -> Result<()> {
         ele.get_shipping_cost();
         println!("VECYOOTRYSS! \n {:?}", vec![ele])
     }
-    match render_ui() {
+
+    let test_data = String::from("test_data_external");
+
+    // UI
+    match render_ui(test_data) {
         Err(_) => panic!("aaaaa"),
         _ => (),
     }
@@ -233,6 +241,179 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn render_ui(test_data: String) -> eframe::Result<()> {
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([400.0, 300.0])
+            .with_min_inner_size([300.0, 220.0]),
+        follow_system_theme: false,
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "eframe template",
+        native_options,
+        Box::new(|cc| {
+            let mut app = TemplateApp::new(cc);
+            app.set_data(test_data);
+
+            return Box::new(app);
+        }),
+    )
+}
+/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(default)] // if we add new fields, give them default values when deserializing old state
+pub struct TemplateApp {
+    // Example stuff:
+    label: String,
+    test_data: String,
+    test_data_internal: String,
+    #[serde(skip)] // This how you opt-out of serialization of a field
+    value: f32,
+}
+
+impl Default for TemplateApp {
+    fn default() -> Self {
+        Self {
+            // Example stuff:
+            label: "Hello World!".to_owned(),
+            value: 2.7,
+            test_data_internal: "test_internal_default".to_owned(),
+            test_data: "default test data".to_owned(),
+        }
+    }
+}
+
+trait SetData {
+    fn set_data(&mut self, data: String);
+}
+
+impl SetData for TemplateApp {
+    fn set_data(&mut self, data: String) {
+        self.test_data = data;
+    }
+}
+
+impl TemplateApp {
+    /// Called once before the first frame.
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // This is also where you can customize the look and feel of egui using
+        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
+
+        // Load previous app state (if any).
+        // Note that you must enable the `persistence` feature for this to work.
+        if let Some(storage) = cc.storage {
+            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+        }
+
+        Default::default()
+    }
+}
+
+impl eframe::App for TemplateApp {
+    /// Called by the frame work to save state before shutdown.
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, self);
+    }
+
+    /// Called each time the UI needs repainting, which may be many times per second.
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
+        // For inspiration and more examples, go to https://emilk.github.io/egui
+
+        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            // The top panel is often a good place for a menu bar:
+
+            egui::menu::bar(ui, |ui| {
+                // NOTE: no File->Quit on web pages!
+                let is_web = cfg!(target_arch = "wasm32");
+                if !is_web {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("Quit").clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    });
+                    ui.add_space(16.0);
+                }
+
+                egui::widgets::global_dark_light_mode_buttons(ui);
+            });
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            // The central panel the region left after adding TopPanel's and SidePanel's
+            ui.heading("eframe template");
+
+            ui.horizontal(|ui| {
+                ui.label("Write something: ");
+                ui.label(&self.test_data_internal);
+                ui.text_edit_singleline(&mut self.label);
+            });
+
+            ui.horizontal(|ui: &mut egui::Ui| ui.label(&self.test_data));
+
+            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
+            if ui.button("Increment").clicked() {
+                self.value += 1.0;
+            }
+
+            ui.separator();
+
+            ui.add(egui::github_link_file!(
+                "https://github.com/emilk/eframe_template/blob/main/",
+                "Source code."
+            ));
+
+            show_table(ui);
+
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                powered_by_egui_and_eframe(ui);
+                egui::warn_if_debug_build(ui);
+            });
+        });
+    }
+}
+
+fn show_table(ui: &mut egui::Ui) {
+    ui.allocate_ui(Vec2 { x: 600.0, y: 600.0 }, |ui| {
+        TableBuilder::new(ui)
+            .column(Column::auto().resizable(true))
+            .column(Column::remainder())
+            .header(20.0, |mut header| {
+                header.col(|ui| {
+                    ui.heading("First column");
+                });
+                header.col(|ui| {
+                    ui.heading("Second column");
+                });
+            })
+            .body(|mut body| {
+                body.row(30.0, |mut row| {
+                    row.col(|ui| {
+                        ui.label("Hello");
+                    });
+                    row.col(|ui| {
+                        ui.button("world!");
+                    });
+                });
+            });
+    });
+}
+
+fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.label("Powered by ");
+        ui.hyperlink_to("egui", "https://github.com/emilk/egui");
+        ui.label(" and ");
+        ui.hyperlink_to(
+            "eframe",
+            "https://github.com/emilk/egui/tree/master/crates/eframe",
+        );
+        ui.label(".");
+    });
+}
 #[cfg(test)]
 mod tests {
     use super::*;
