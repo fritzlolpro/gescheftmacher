@@ -14,6 +14,7 @@ use std::path::Path;
 
 use egui::{Key, Vec2};
 use egui_extras::{Column, TableBuilder};
+use struct_field_names_as_array::FieldNamesAsArray;
 
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
 error_chain! {
@@ -61,7 +62,7 @@ impl DataManager for TradeItemManager {
         TradeItemManager { items: data.items }
     }
 }
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, FieldNamesAsArray)]
 pub struct ExtendedItemData {
     type_id: i32,
     type_volume: f32,
@@ -278,6 +279,7 @@ async fn main() -> Result<()> {
         &goon_trade_data.expect("hui"),
     );
     println!("MERGED:\n{:?}", merged_trade_data);
+
     let mut i = vec![];
     for ele in merged_trade_data {
         let extended_item_data = ExtendedItemData::new(ele.to_owned());
@@ -285,6 +287,9 @@ async fn main() -> Result<()> {
     }
 
     println!("EXTENDED DATA! \n {:?}", i);
+
+    let fields = ExtendedItemData::FIELD_NAMES_AS_ARRAY;
+    println!("FIELDS NAMES! \n {:?}", fields);
 
     let test_data = String::from("test_data_external");
 

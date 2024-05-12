@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 error-chain = "0.12.4"
 reqwest = "0.12.3"
-serde = { version = "1.0.197", features = ["derive"]}
+serde = { version = "1.0.197", features = ["derive"] }
 serde-xml-rs = "0.6.0"
 tokio = { version = "1.37.0", features = ["full"] }
 rusqlite = { version = "0.31.0", features = ["bundled"] }
@@ -21,7 +21,11 @@ eframe = { version = "0.27.0", default-features = false, features = [
 ] }
 log = "0.4"
 egui_extras = { version = "*", features = ["all_loaders"] }
-image = { version = "0.24", features = ["jpeg", "png"] } # Add the types you want support for
+image = { version = "0.25.1", features = [
+    "jpeg",
+    "png",
+] } # Add the types you want support for
+struct-field-names-as-array = { version = "*" }
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
