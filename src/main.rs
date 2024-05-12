@@ -24,7 +24,7 @@ error_chain! {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct ItemData {
+pub struct ItemData {
     type_id: i32,
     type_volume: f32,
     type_name: String,
@@ -72,18 +72,25 @@ pub struct ExtendedItemData {
 }
 
 pub trait BuildExtededData {
-    fn new(data: ExtendedItemData) -> Self;
+    fn new(data: ItemData) -> Self;
 }
 
 impl BuildExtededData for ExtendedItemData {
-    fn new(data: ExtendedItemData) -> Self {
+    fn new(data: ItemData) -> Self {
+        let shipping_price = data.get_shipping_price();
+        let jtd = data.jita_trade_data.unwrap();
+        let atd = data.abroad_trade_data.unwrap();
+        let id = data.type_id;
+        let name = data.type_name.to_owned();
+        let volume = data.type_volume;
+
         ExtendedItemData {
-            type_id: data.type_id,
-            type_volume: data.type_volume,
-            type_name: data.type_name,
-            jita_trade_data: data.jita_trade_data,
-            abroad_trade_data: data.abroad_trade_data,
-            shipping_price: data.shipping_price,
+            type_id: id,
+            type_volume: volume,
+            type_name: name,
+            jita_trade_data: jtd,
+            abroad_trade_data: atd,
+            shipping_price: shipping_price,
         }
     }
 }
@@ -273,24 +280,11 @@ async fn main() -> Result<()> {
     println!("MERGED:\n{:?}", merged_trade_data);
     let mut i = vec![];
     for ele in merged_trade_data {
-        let shipping_price = ele.get_shipping_price();
-        let jtd = ele.jita_trade_data.unwrap();
-        let atd = ele.abroad_trade_data.unwrap();
-        let id = ele.type_id;
-        let name = ele.type_name.to_owned();
-        let volume = ele.type_volume;
-        let extended_item_data = ExtendedItemData::new(ExtendedItemData {
-            type_id: id,
-            type_volume: volume,
-            type_name: name,
-            jita_trade_data: jtd,
-            abroad_trade_data: atd,
-            shipping_price: shipping_price,
-        });
+        let extended_item_data = ExtendedItemData::new(ele.to_owned());
         i.push(extended_item_data);
     }
 
-        println!("EXTENDED DATA! \n {:?}", i);
+    println!("EXTENDED DATA! \n {:?}", i);
 
     let test_data = String::from("test_data_external");
 
@@ -440,14 +434,25 @@ impl eframe::App for TemplateApp {
 fn show_table(ui: &mut egui::Ui) {
     ui.allocate_ui(Vec2 { x: 600.0, y: 600.0 }, |ui| {
         TableBuilder::new(ui)
-            .column(Column::auto().resizable(true))
-            .column(Column::remainder())
+            .columns(Column::auto().resizable(true), 6)
             .header(20.0, |mut header| {
                 header.col(|ui| {
-                    ui.heading("First column");
+                        ui.heading("jit wk mo");
                 });
                 header.col(|ui| {
-                    ui.heading("Second column");
+                        ui.heading("jit buy mx");
+                });
+                header.col(|ui| {
+                        ui.heading("jit lis");
+                });
+                header.col(|ui| {
+                        ui.heading("out wk mo");
+                });
+                header.col(|ui| {
+                        ui.heading("out buy mx");
+                });
+                header.col(|ui| {
+                        ui.heading("out lis");
                 });
             })
             .body(|mut body| {
