@@ -42,12 +42,58 @@ struct TradeData {
     sell_listed: i64,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct ManagerInitData {
+    items: Vec<ExtendedItemData>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct TradeItemManager {
+    items: Vec<ExtendedItemData>,
+}
+
+pub trait DataManager {
+    fn new(data: ManagerInitData) -> Self;
+}
+
+impl DataManager for TradeItemManager {
+    fn new(data: ManagerInitData) -> Self {
+        TradeItemManager { items: data.items }
+    }
+}
+#[derive(Debug, PartialEq, Clone)]
+pub struct ExtendedItemData {
+    type_id: i32,
+    type_volume: f32,
+    type_name: String,
+    jita_trade_data: TradeData,
+    abroad_trade_data: TradeData,
+    shipping_price: f64,
+}
+
+pub trait BuildExtededData {
+    fn new(data: ExtendedItemData) -> Self;
+}
+
+impl BuildExtededData for ExtendedItemData {
+    fn new(data: ExtendedItemData) -> Self {
+        ExtendedItemData {
+            type_id: data.type_id,
+            type_volume: data.type_volume,
+            type_name: data.type_name,
+            jita_trade_data: data.jita_trade_data,
+            abroad_trade_data: data.abroad_trade_data,
+            shipping_price: data.shipping_price,
+        }
+    }
+}
+
 pub trait CalculateFields {
-    fn get_shipping_cost(&self) -> f64;
+    fn get_shipping_price(&self) -> f64;
 }
 
 impl CalculateFields for ItemData {
-    fn get_shipping_cost(&self) -> f64 {
+    fn get_shipping_price(&self) -> f64 {
         let shipping_price = &self.type_volume * DELIVERY_PRICE_PER_CUBOMETR;
         return shipping_price as f64;
     }
@@ -225,10 +271,26 @@ async fn main() -> Result<()> {
         &goon_trade_data.expect("hui"),
     );
     println!("MERGED:\n{:?}", merged_trade_data);
+    let mut i = vec![];
     for ele in merged_trade_data {
-        ele.get_shipping_cost();
-        println!("VECYOOTRYSS! \n {:?}", vec![ele])
+        let shipping_price = ele.get_shipping_price();
+        let jtd = ele.jita_trade_data.unwrap();
+        let atd = ele.abroad_trade_data.unwrap();
+        let id = ele.type_id;
+        let name = ele.type_name.to_owned();
+        let volume = ele.type_volume;
+        let extended_item_data = ExtendedItemData::new(ExtendedItemData {
+            type_id: id,
+            type_volume: volume,
+            type_name: name,
+            jita_trade_data: jtd,
+            abroad_trade_data: atd,
+            shipping_price: shipping_price,
+        });
+        i.push(extended_item_data);
     }
+
+        println!("EXTENDED DATA! \n {:?}", i);
 
     let test_data = String::from("test_data_external");
 
