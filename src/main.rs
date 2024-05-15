@@ -1,5 +1,3 @@
-use std::{any::Any, result};
-
 use error_chain::error_chain;
 use goonmetrics::goonmetrics::PriceData;
 use reqwest;
@@ -145,10 +143,19 @@ fn get_item_data_from_db(names: Vec<&str>) -> Vec<ItemData> {
     let curr_dir = std::env::current_dir().unwrap();
     let db_path = Path::new(&curr_dir).join("src").join("eve.db");
     println!("PATH:\n{:?}", db_path);
-    let eve_db = SQL_Connection::open(db_path).unwrap();
+    let src_path_connection = SQL_Connection::open(db_path);
 
-    // let mut stored_type_data = get_stored_type_data(&eve_db, &name);
-    // println!("Item info:\n{:?}", stored_type_data);
+    let exe= std::env::current_exe().unwrap();
+    let exe_loc = exe.parent().unwrap();
+    let exe_path = Path::new(&exe_loc).join("eve.db");
+    let eve_db:SQL_Connection;
+
+    if let Err(_err) = src_path_connection {
+        eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
+    } else {
+        eve_db = src_path_connection.unwrap()
+    }
+    println!("exe_path:\n{:?}", exe_path);
 
     names
         .into_iter()
