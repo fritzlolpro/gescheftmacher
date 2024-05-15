@@ -14,7 +14,7 @@ use std::path::Path;
 
 use egui::{Key, Vec2};
 use egui_extras::{Column, TableBuilder};
-use struct_field_names_as_array::FieldNamesAsArray;
+use struct_field_names_as_array::FieldNamesAsSlice;
 
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
 error_chain! {
@@ -46,11 +46,13 @@ struct TradeData {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ManagerInitData {
     items: Vec<ExtendedItemData>,
+    table_headers: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 struct TradeItemManager {
     items: Vec<ExtendedItemData>,
+    table_headers: Vec<String>,
 }
 
 pub trait DataManager {
@@ -59,10 +61,13 @@ pub trait DataManager {
 
 impl DataManager for TradeItemManager {
     fn new(data: ManagerInitData) -> Self {
-        TradeItemManager { items: data.items }
+        TradeItemManager {
+            items: data.items,
+            table_headers: data.table_headers,
+        }
     }
 }
-#[derive(Debug, PartialEq, Clone, FieldNamesAsArray)]
+#[derive(Debug, PartialEq, Clone, FieldNamesAsSlice)]
 pub struct ExtendedItemData {
     type_id: i32,
     type_volume: f32,
@@ -288,13 +293,21 @@ async fn main() -> Result<()> {
 
     println!("EXTENDED DATA! \n {:?}", i);
 
-    let fields = ExtendedItemData::FIELD_NAMES_AS_ARRAY;
+    let fields = ExtendedItemData::FIELD_NAMES_AS_SLICE
+        .to_owned()
+        .into_iter()
+        .map(|x| x.to_owned())
+        .collect();
     println!("FIELDS NAMES! \n {:?}", fields);
 
     let test_data = String::from("test_data_external");
 
+    let item_manager = TradeItemManager::new(ManagerInitData {
+        items: i,
+        table_headers: fields,
+    });
     // UI
-    match render_ui(test_data) {
+    match render_ui(item_manager) {
         Err(_) => panic!("aaaaa"),
         _ => (),
     }
@@ -302,7 +315,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn render_ui(test_data: String) -> eframe::Result<()> {
+fn render_ui(item_manager: TradeItemManager) -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 300.0])
@@ -316,7 +329,7 @@ fn render_ui(test_data: String) -> eframe::Result<()> {
         native_options,
         Box::new(|cc| {
             let mut app = TemplateApp::new(cc);
-            app.set_data(test_data);
+            app.set_data(item_manager);
 
             return Box::new(app);
         }),
@@ -328,7 +341,8 @@ fn render_ui(test_data: String) -> eframe::Result<()> {
 pub struct TemplateApp {
     // Example stuff:
     label: String,
-    test_data: String,
+    #[serde(skip)] // This how you opt-out of serialization of a field
+    data: Option<TradeItemManager>,
     test_data_internal: String,
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
@@ -341,18 +355,18 @@ impl Default for TemplateApp {
             label: "Hello World!".to_owned(),
             value: 2.7,
             test_data_internal: "test_internal_default".to_owned(),
-            test_data: "default test data".to_owned(),
+            data: None,
         }
     }
 }
 
 trait SetData {
-    fn set_data(&mut self, data: String);
+    fn set_data(&mut self, data: TradeItemManager);
 }
 
 impl SetData for TemplateApp {
-    fn set_data(&mut self, data: String) {
-        self.test_data = data;
+    fn set_data(&mut self, data: TradeItemManager) {
+        self.data = Some(data);
     }
 }
 
@@ -412,7 +426,10 @@ impl eframe::App for TemplateApp {
                 ui.text_edit_singleline(&mut self.label);
             });
 
-            ui.horizontal(|ui: &mut egui::Ui| ui.label(&self.test_data));
+            let fields = &self.data.clone().unwrap().table_headers;
+            for field in fields {
+                ui.horizontal(|ui: &mut egui::Ui| ui.label(field));
+            }
 
             ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
             if ui.button("Increment").clicked() {
@@ -442,22 +459,22 @@ fn show_table(ui: &mut egui::Ui) {
             .columns(Column::auto().resizable(true), 6)
             .header(20.0, |mut header| {
                 header.col(|ui| {
-                        ui.heading("jit wk mo");
+                    ui.heading("jit wk mo");
                 });
                 header.col(|ui| {
-                        ui.heading("jit buy mx");
+                    ui.heading("jit buy mx");
                 });
                 header.col(|ui| {
-                        ui.heading("jit lis");
+                    ui.heading("jit lis");
                 });
                 header.col(|ui| {
-                        ui.heading("out wk mo");
+                    ui.heading("out wk mo");
                 });
                 header.col(|ui| {
-                        ui.heading("out buy mx");
+                    ui.heading("out buy mx");
                 });
                 header.col(|ui| {
-                        ui.heading("out lis");
+                    ui.heading("out lis");
                 });
             })
             .body(|mut body| {
