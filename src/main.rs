@@ -33,7 +33,7 @@ pub struct ItemData {
     abroad_trade_data: Option<TradeData>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, FieldNamesAsSlice)]
 struct TradeData {
     updated: String,
     weekly_movement: f64,
@@ -285,6 +285,7 @@ async fn main() -> Result<()> {
     );
     println!("MERGED:\n{:?}", merged_trade_data);
 
+    // MOVE THIS TO ExtendedItemDataConstructor!
     let mut i = vec![];
     for ele in merged_trade_data {
         let extended_item_data = ExtendedItemData::new(ele.to_owned());
@@ -293,14 +294,35 @@ async fn main() -> Result<()> {
 
     println!("EXTENDED DATA! \n {:?}", i);
 
-    let fields = ExtendedItemData::FIELD_NAMES_AS_SLICE
+    let trade_data_fields: Vec<String> = TradeData::FIELD_NAMES_AS_SLICE
         .to_owned()
         .into_iter()
         .map(|x| x.to_owned())
         .collect();
-    println!("FIELDS NAMES! \n {:?}", fields);
 
-    let test_data = String::from("test_data_external");
+    let extended_data_fields: Vec<String> = ExtendedItemData::FIELD_NAMES_AS_SLICE
+        .to_owned()
+        .into_iter()
+        .map(|x| x.to_owned())
+        .collect();
+
+    let mut fields = vec![];
+
+    for ef in extended_data_fields {
+        if ef == "jita_trade_data".to_owned() {
+            for tdf in &trade_data_fields {
+                fields.push("jit_".to_owned() + tdf)
+            }
+        } else if ef == "abroad_trade_data".to_owned() {
+            for tdf in &trade_data_fields {
+                fields.push("ab_".to_owned() + tdf)
+            }
+        } else {
+            fields.push(ef)
+        }
+    }
+
+    println!("FIELDS NAMES! \n {:?}", fields);
 
     let item_manager = TradeItemManager::new(ManagerInitData {
         items: i,
@@ -426,10 +448,10 @@ impl eframe::App for TemplateApp {
                 ui.text_edit_singleline(&mut self.label);
             });
 
-            let fields = &self.data.clone().unwrap().table_headers;
-            for field in fields {
-                ui.horizontal(|ui: &mut egui::Ui| ui.label(field));
-            }
+            // let fields = &self.data.clone().unwrap().table_headers;
+            // // for field in fields {
+            //     ui.horizontal(|ui: &mut egui::Ui| ui.label(field));
+            // }
 
             ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
             if ui.button("Increment").clicked() {
@@ -443,7 +465,7 @@ impl eframe::App for TemplateApp {
                 "Source code."
             ));
 
-            show_table(ui);
+            show_table(self, ui);
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 powered_by_egui_and_eframe(ui);
@@ -453,29 +475,19 @@ impl eframe::App for TemplateApp {
     }
 }
 
-fn show_table(ui: &mut egui::Ui) {
+fn show_table(ctx: &mut TemplateApp, ui: &mut egui::Ui) {
     ui.allocate_ui(Vec2 { x: 600.0, y: 600.0 }, |ui| {
+        let column_quantity = ctx.data.clone().unwrap().table_headers.len();
+        let headers = ctx.data.clone().unwrap().table_headers;
+
         TableBuilder::new(ui)
-            .columns(Column::auto().resizable(true), 6)
+            .columns(Column::auto().resizable(true), column_quantity)
             .header(20.0, |mut header| {
-                header.col(|ui| {
-                    ui.heading("jit wk mo");
-                });
-                header.col(|ui| {
-                    ui.heading("jit buy mx");
-                });
-                header.col(|ui| {
-                    ui.heading("jit lis");
-                });
-                header.col(|ui| {
-                    ui.heading("out wk mo");
-                });
-                header.col(|ui| {
-                    ui.heading("out buy mx");
-                });
-                header.col(|ui| {
-                    ui.heading("out lis");
-                });
+                for h in headers {
+                    header.col(|ui| {
+                        ui.heading(h);
+                    });
+                }
             })
             .body(|mut body| {
                 body.row(30.0, |mut row| {
