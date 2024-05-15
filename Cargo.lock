@@ -1609,6 +1609,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde-xml-rs",
+ "serde_json",
  "struct-field-names-as-array",
  "tokio",
 ]

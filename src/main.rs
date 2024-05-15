@@ -33,7 +33,7 @@ pub struct ItemData {
     abroad_trade_data: Option<TradeData>,
 }
 
-#[derive(Debug, PartialEq, Clone, FieldNamesAsSlice)]
+#[derive(Debug, PartialEq, Clone, FieldNamesAsSlice, Deserialize, Serialize)]
 struct TradeData {
     updated: String,
     weekly_movement: f64,
@@ -47,12 +47,14 @@ struct TradeData {
 pub struct ManagerInitData {
     items: Vec<ExtendedItemData>,
     table_headers: Vec<String>,
+    table_rows: Vec<Vec<String>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 struct TradeItemManager {
     items: Vec<ExtendedItemData>,
     table_headers: Vec<String>,
+    table_rows: Vec<Vec<String>>,
 }
 
 pub trait DataManager {
@@ -64,10 +66,11 @@ impl DataManager for TradeItemManager {
         TradeItemManager {
             items: data.items,
             table_headers: data.table_headers,
+            table_rows: data.table_rows,
         }
     }
 }
-#[derive(Debug, PartialEq, Clone, FieldNamesAsSlice)]
+#[derive(Debug, PartialEq, Clone, FieldNamesAsSlice, Deserialize, Serialize)]
 pub struct ExtendedItemData {
     type_id: i32,
     type_volume: f32,
@@ -286,13 +289,11 @@ async fn main() -> Result<()> {
     println!("MERGED:\n{:?}", merged_trade_data);
 
     // MOVE THIS TO ExtendedItemDataConstructor!
-    let mut i = vec![];
+    let mut extended_data_collection = vec![];
     for ele in merged_trade_data {
         let extended_item_data = ExtendedItemData::new(ele.to_owned());
-        i.push(extended_item_data);
+        extended_data_collection.push(extended_item_data);
     }
-
-    println!("EXTENDED DATA! \n {:?}", i);
 
     let trade_data_fields: Vec<String> = TradeData::FIELD_NAMES_AS_SLICE
         .to_owned()
@@ -308,25 +309,80 @@ async fn main() -> Result<()> {
 
     let mut fields = vec![];
 
-    for ef in extended_data_fields {
-        if ef == "jita_trade_data".to_owned() {
+    for ef in &extended_data_fields {
+        if ef.to_string() == "jita_trade_data".to_owned() {
             for tdf in &trade_data_fields {
                 fields.push("jit_".to_owned() + tdf)
             }
-        } else if ef == "abroad_trade_data".to_owned() {
+        } else if ef.to_string() == "abroad_trade_data".to_owned() {
             for tdf in &trade_data_fields {
                 fields.push("ab_".to_owned() + tdf)
             }
         } else {
-            fields.push(ef)
+            fields.push(ef.to_owned())
         }
     }
 
+    println!("EXTENDED DATA! \n {:?}", extended_data_collection);
+
+    let mut table_rows: Vec<Vec<String>> = vec![];
+    for entity in &extended_data_collection {
+        let mut row: Vec<String> = vec![];
+        for field in &extended_data_fields {
+            match field.as_str() {
+                "type_id" => row.push(entity.type_id.to_string()),
+                "type_volume" => row.push(entity.type_volume.to_string()),
+                "type_name" => row.push(entity.type_name.to_string()),
+                "jita_trade_data" => {
+                    for tdf in &trade_data_fields {
+                        match tdf.as_str() {
+                            "updated" => row.push(entity.jita_trade_data.updated.to_string()),
+                            "weekly_movement" => {
+                                row.push(entity.jita_trade_data.weekly_movement.to_string())
+                            }
+                            "buy_max" => row.push(entity.jita_trade_data.buy_max.to_string()),
+                            "buy_listed" => row.push(entity.jita_trade_data.buy_listed.to_string()),
+                            "sell_min" => row.push(entity.jita_trade_data.sell_min.to_string()),
+                            "sell_listed" => {
+                                row.push(entity.jita_trade_data.sell_listed.to_string())
+                            }
+                            _ => panic!("SOME FIELDS MISSING!"),
+                        }
+                    }
+                }
+                "abroad_trade_data" => {
+                    for tdf in &trade_data_fields {
+                        match tdf.as_str() {
+                            "updated" => row.push(entity.abroad_trade_data.updated.to_string()),
+                            "weekly_movement" => {
+                                row.push(entity.abroad_trade_data.weekly_movement.to_string())
+                            }
+                            "buy_max" => row.push(entity.abroad_trade_data.buy_max.to_string()),
+                            "buy_listed" => {
+                                row.push(entity.abroad_trade_data.buy_listed.to_string())
+                            }
+                            "sell_min" => row.push(entity.abroad_trade_data.sell_min.to_string()),
+                            "sell_listed" => {
+                                row.push(entity.abroad_trade_data.sell_listed.to_string())
+                            }
+                            _ => panic!("SOME FIELDS MISSING!"),
+                        }
+                    }
+                }
+                "shipping_price" => row.push(entity.shipping_price.to_string()),
+                _ => panic!("SOME h-lvl probably custom fields missing!"),
+            }
+        }
+        table_rows.push(row)
+    }
+
+    println!("Table ROWS! \n {:?}", table_rows);
     println!("FIELDS NAMES! \n {:?}", fields);
 
     let item_manager = TradeItemManager::new(ManagerInitData {
-        items: i,
+        items: extended_data_collection,
         table_headers: fields,
+        table_rows: table_rows,
     });
     // UI
     match render_ui(item_manager) {
@@ -479,7 +535,7 @@ fn show_table(ctx: &mut TemplateApp, ui: &mut egui::Ui) {
     ui.allocate_ui(Vec2 { x: 600.0, y: 600.0 }, |ui| {
         let column_quantity = ctx.data.clone().unwrap().table_headers.len();
         let headers = ctx.data.clone().unwrap().table_headers;
-
+        let rows = ctx.data.clone().unwrap().table_rows;
         TableBuilder::new(ui)
             .columns(Column::auto().resizable(true), column_quantity)
             .header(20.0, |mut header| {
@@ -490,14 +546,15 @@ fn show_table(ctx: &mut TemplateApp, ui: &mut egui::Ui) {
                 }
             })
             .body(|mut body| {
-                body.row(30.0, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Hello");
+                for r in rows {
+                    body.row(30.0, |mut row| {
+                        for cell in r {
+                            row.col(|ui| {
+                                ui.label(cell);
+                            });
+                        }
                     });
-                    row.col(|ui| {
-                        ui.button("world!");
-                    });
-                });
+                }
             });
     });
 }
