@@ -91,6 +91,7 @@ impl BuildExtededData for ExtendedItemData {
         let name = data.type_name.to_owned();
         let volume = data.type_volume;
 
+        let 
         ExtendedItemData {
             type_id: id,
             type_volume: volume,
@@ -295,7 +296,6 @@ async fn main() -> Result<()> {
     );
     println!("MERGED:\n{:?}", merged_trade_data);
 
-    // MOVE THIS TO ExtendedItemDataConstructor!
     let mut extended_data_collection = vec![];
     for ele in merged_trade_data {
         let extended_item_data = ExtendedItemData::new(ele.to_owned());
