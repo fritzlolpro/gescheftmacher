@@ -15,6 +15,13 @@ use egui_extras::{Column, TableBuilder};
 use struct_field_names_as_array::FieldNamesAsSlice;
 
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
+const MIN_SELL_MARGIN: f32 = 1.15;
+const JITA_TAXRATE: f32 = 0.0108;
+const PROFIT_THRESHOLD: i64 = 30000000;
+const FREEZE_RATE_THRESHOLD: f32 = 0.1;
+const MARKET_RATE: i32 = 1;
+const DAILY_VOL: i64 = 10;
+
 error_chain! {
     foreign_links {
         Io(std::io::Error);
@@ -44,12 +51,10 @@ struct TradeData {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ManagerInitData {
     items: Vec<ExtendedItemData>,
-    table_headers: Vec<String>,
-    table_rows: Vec<Vec<String>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct TradeItemManager {
+struct TradeItemViewManager {
     items: Vec<ExtendedItemData>,
     table_headers: Vec<String>,
     table_rows: Vec<Vec<String>>,
@@ -59,15 +64,115 @@ pub trait DataManager {
     fn new(data: ManagerInitData) -> Self;
 }
 
-impl DataManager for TradeItemManager {
+impl DataManager for TradeItemViewManager {
     fn new(data: ManagerInitData) -> Self {
-        TradeItemManager {
+        let trade_data_fields: Vec<String> = TradeData::FIELD_NAMES_AS_SLICE
+            .to_owned()
+            .into_iter()
+            .map(|x| x.to_owned())
+            .collect();
+
+        let extended_data_fields: Vec<String> = ExtendedItemData::FIELD_NAMES_AS_SLICE
+            .to_owned()
+            .into_iter()
+            .map(|x| x.to_owned())
+            .collect();
+
+        let mut table_headers = vec![];
+
+        for ef in &extended_data_fields {
+            if ef.to_string() == "jita_trade_data".to_owned() {
+                for tdf in &trade_data_fields {
+                    match tdf.as_str() {
+                        "updated" => table_headers.push("j_upd".to_owned()),
+                        "weekly_movement" => table_headers.push("j_wkmov".to_owned()),
+                        "buy_max" => table_headers.push("j_buy".to_owned()),
+                        "buy_listed" => table_headers.push("j_buylist".to_owned()),
+                        "sell_min" => table_headers.push("j_sell".to_owned()),
+                        "sell_listed" => table_headers.push("j_selllist".to_owned()),
+                        _ => table_headers.push(tdf.to_owned()),
+                    }
+                }
+            } else if ef.to_string() == "abroad_trade_data".to_owned() {
+                for tdf in &trade_data_fields {
+                    match tdf.as_str() {
+                        "updated" => table_headers.push("ab_upd".to_owned()),
+                        "weekly_movement" => table_headers.push("ab_wkmov".to_owned()),
+                        "buy_max" => table_headers.push("ab_buy".to_owned()),
+                        "buy_listed" => table_headers.push("ab_buylist".to_owned()),
+                        "sell_min" => table_headers.push("ab_sell".to_owned()),
+                        "sell_listed" => table_headers.push("ab_selllist".to_owned()),
+                        _ => table_headers.push(tdf.to_owned()),
+                    }
+                }
+            } else {
+                table_headers.push(ef.to_owned())
+            }
+        }
+
+        let mut table_rows: Vec<Vec<String>> = vec![];
+
+        for entity in &data.items {
+            let mut row: Vec<String> = vec![];
+            for field in &extended_data_fields {
+                match field.as_str() {
+                    "type_id" => row.push(entity.type_id.to_string()),
+                    "type_volume" => row.push(entity.type_volume.to_string()),
+                    "type_name" => row.push(entity.type_name.to_string()),
+                    "jita_trade_data" => {
+                        for tdf in &trade_data_fields {
+                            match tdf.as_str() {
+                                "updated" => row.push(entity.jita_trade_data.updated.to_string()),
+                                "weekly_movement" => {
+                                    row.push(entity.jita_trade_data.weekly_movement.to_string())
+                                }
+                                "buy_max" => row.push(entity.jita_trade_data.buy_max.to_string()),
+                                "buy_listed" => {
+                                    row.push(entity.jita_trade_data.buy_listed.to_string())
+                                }
+                                "sell_min" => row.push(entity.jita_trade_data.sell_min.to_string()),
+                                "sell_listed" => {
+                                    row.push(entity.jita_trade_data.sell_listed.to_string())
+                                }
+                                _ => panic!("SOME FIELDS MISSING!"),
+                            }
+                        }
+                    }
+                    "abroad_trade_data" => {
+                        for tdf in &trade_data_fields {
+                            match tdf.as_str() {
+                                "updated" => row.push(entity.abroad_trade_data.updated.to_string()),
+                                "weekly_movement" => {
+                                    row.push(entity.abroad_trade_data.weekly_movement.to_string())
+                                }
+                                "buy_max" => row.push(entity.abroad_trade_data.buy_max.to_string()),
+                                "buy_listed" => {
+                                    row.push(entity.abroad_trade_data.buy_listed.to_string())
+                                }
+                                "sell_min" => {
+                                    row.push(entity.abroad_trade_data.sell_min.to_string())
+                                }
+                                "sell_listed" => {
+                                    row.push(entity.abroad_trade_data.sell_listed.to_string())
+                                }
+                                _ => panic!("SOME FIELDS MISSING!"),
+                            }
+                        }
+                    }
+                    "shipping_price" => row.push(entity.shipping_price.to_string()),
+                    _ => panic!("SOME h-lvl probably custom fields missing!"),
+                }
+            }
+            table_rows.push(row)
+        }
+        TradeItemViewManager {
             items: data.items,
-            table_headers: data.table_headers,
-            table_rows: data.table_rows,
+            table_headers: table_headers,
+            table_rows: table_rows,
         }
     }
 }
+
 #[derive(Debug, PartialEq, Clone, FieldNamesAsSlice, Deserialize, Serialize)]
 pub struct ExtendedItemData {
     type_id: i32,
@@ -91,7 +196,6 @@ impl BuildExtededData for ExtendedItemData {
         let name = data.type_name.to_owned();
         let volume = data.type_volume;
 
-        let 
         ExtendedItemData {
             type_id: id,
             type_volume: volume,
@@ -114,12 +218,14 @@ impl CalculateFields for ItemData {
     }
 }
 
+// TODO: move to datagetter
 #[derive(Debug)]
 struct ItemDataFromDb {
     type_id: i32,
     type_volume: f32,
 }
 
+// TODO: move to datagetter
 fn get_stored_type_data(conn: &SQL_Connection, type_name: &str) -> SQL_Result<ItemDataFromDb> {
     let mut stmt = conn.prepare(
         "SELECT typeID, volume FROM invTypes
@@ -140,16 +246,17 @@ fn get_stored_type_data(conn: &SQL_Connection, type_name: &str) -> SQL_Result<It
     Ok(result)
 }
 
+// TODO: move to datagetter
 fn get_item_data_from_db(names: Vec<&str>) -> Vec<ItemData> {
     let curr_dir = std::env::current_dir().unwrap();
     let db_path = Path::new(&curr_dir).join("src").join("eve.db");
     println!("PATH:\n{:?}", db_path);
     let src_path_connection = SQL_Connection::open(db_path);
 
-    let exe= std::env::current_exe().unwrap();
+    let exe = std::env::current_exe().unwrap();
     let exe_loc = exe.parent().unwrap();
     let exe_path = Path::new(&exe_loc).join("eve.db");
-    let eve_db:SQL_Connection;
+    let eve_db: SQL_Connection;
 
     if let Err(_err) = src_path_connection {
         eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
@@ -174,6 +281,7 @@ fn get_item_data_from_db(names: Vec<&str>) -> Vec<ItemData> {
         .collect()
 }
 
+// TODO: move to datagetter
 async fn get_item_data_from_api(station_id: &str, item_ids: &Vec<i32>) -> Result<Vec<PriceData>> {
     let item_ids = &item_ids
         .into_iter()
@@ -194,6 +302,7 @@ async fn get_item_data_from_api(station_id: &str, item_ids: &Vec<i32>) -> Result
     return Ok(vec![pd]);
 }
 
+// TODO: move to datagetter
 fn merge_trade_data(
     items_data: &Vec<ItemData>,
     jita_trade_data: &Vec<PriceData>,
@@ -273,7 +382,7 @@ async fn main() -> Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let name = "Tritanium";
     let names: Vec<&str> = vec!["Tritanium", "Buzzard"];
-
+    // TODO: mod data getter
     let items_data: &Vec<ItemData> = &get_item_data_from_db(names);
     println!("Bulk from db:\n{:?}", items_data);
 
@@ -296,103 +405,21 @@ async fn main() -> Result<()> {
     );
     println!("MERGED:\n{:?}", merged_trade_data);
 
+    // END mod data getter
+
     let mut extended_data_collection = vec![];
     for ele in merged_trade_data {
         let extended_item_data = ExtendedItemData::new(ele.to_owned());
         extended_data_collection.push(extended_item_data);
     }
 
-    let trade_data_fields: Vec<String> = TradeData::FIELD_NAMES_AS_SLICE
-        .to_owned()
-        .into_iter()
-        .map(|x| x.to_owned())
-        .collect();
+      println!("EXTENDED DATA! \n {:?}", extended_data_collection);
 
-    let extended_data_fields: Vec<String> = ExtendedItemData::FIELD_NAMES_AS_SLICE
-        .to_owned()
-        .into_iter()
-        .map(|x| x.to_owned())
-        .collect();
-
-    let mut fields = vec![];
-
-    for ef in &extended_data_fields {
-        if ef.to_string() == "jita_trade_data".to_owned() {
-            for tdf in &trade_data_fields {
-                fields.push("jit_".to_owned() + tdf)
-            }
-        } else if ef.to_string() == "abroad_trade_data".to_owned() {
-            for tdf in &trade_data_fields {
-                fields.push("ab_".to_owned() + tdf)
-            }
-        } else {
-            fields.push(ef.to_owned())
-        }
-    }
-
-    println!("EXTENDED DATA! \n {:?}", extended_data_collection);
-
-    let mut table_rows: Vec<Vec<String>> = vec![];
-    for entity in &extended_data_collection {
-        let mut row: Vec<String> = vec![];
-        for field in &extended_data_fields {
-            match field.as_str() {
-                "type_id" => row.push(entity.type_id.to_string()),
-                "type_volume" => row.push(entity.type_volume.to_string()),
-                "type_name" => row.push(entity.type_name.to_string()),
-                "jita_trade_data" => {
-                    for tdf in &trade_data_fields {
-                        match tdf.as_str() {
-                            "updated" => row.push(entity.jita_trade_data.updated.to_string()),
-                            "weekly_movement" => {
-                                row.push(entity.jita_trade_data.weekly_movement.to_string())
-                            }
-                            "buy_max" => row.push(entity.jita_trade_data.buy_max.to_string()),
-                            "buy_listed" => row.push(entity.jita_trade_data.buy_listed.to_string()),
-                            "sell_min" => row.push(entity.jita_trade_data.sell_min.to_string()),
-                            "sell_listed" => {
-                                row.push(entity.jita_trade_data.sell_listed.to_string())
-                            }
-                            _ => panic!("SOME FIELDS MISSING!"),
-                        }
-                    }
-                }
-                "abroad_trade_data" => {
-                    for tdf in &trade_data_fields {
-                        match tdf.as_str() {
-                            "updated" => row.push(entity.abroad_trade_data.updated.to_string()),
-                            "weekly_movement" => {
-                                row.push(entity.abroad_trade_data.weekly_movement.to_string())
-                            }
-                            "buy_max" => row.push(entity.abroad_trade_data.buy_max.to_string()),
-                            "buy_listed" => {
-                                row.push(entity.abroad_trade_data.buy_listed.to_string())
-                            }
-                            "sell_min" => row.push(entity.abroad_trade_data.sell_min.to_string()),
-                            "sell_listed" => {
-                                row.push(entity.abroad_trade_data.sell_listed.to_string())
-                            }
-                            _ => panic!("SOME FIELDS MISSING!"),
-                        }
-                    }
-                }
-                "shipping_price" => row.push(entity.shipping_price.to_string()),
-                _ => panic!("SOME h-lvl probably custom fields missing!"),
-            }
-        }
-        table_rows.push(row)
-    }
-
-    println!("Table ROWS! \n {:?}", table_rows);
-    println!("FIELDS NAMES! \n {:?}", fields);
-
-    let item_manager = TradeItemManager::new(ManagerInitData {
+    let item_view_manager = TradeItemViewManager::new(ManagerInitData {
         items: extended_data_collection,
-        table_headers: fields,
-        table_rows: table_rows,
     });
     // UI
-    match render_ui(item_manager) {
+    match render_ui(item_view_manager) {
         Err(_) => panic!("aaaaa"),
         _ => (),
     }
@@ -400,7 +427,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn render_ui(item_manager: TradeItemManager) -> eframe::Result<()> {
+fn render_ui(item_view_manager: TradeItemViewManager) -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 300.0])
@@ -414,7 +441,7 @@ fn render_ui(item_manager: TradeItemManager) -> eframe::Result<()> {
         native_options,
         Box::new(|cc| {
             let mut app = TemplateApp::new(cc);
-            app.set_data(item_manager);
+            app.set_data(item_view_manager);
 
             return Box::new(app);
         }),
@@ -427,7 +454,7 @@ pub struct TemplateApp {
     // Example stuff:
     label: String,
     #[serde(skip)] // This how you opt-out of serialization of a field
-    data: Option<TradeItemManager>,
+    data: Option<TradeItemViewManager>,
     test_data_internal: String,
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
@@ -446,11 +473,11 @@ impl Default for TemplateApp {
 }
 
 trait SetData {
-    fn set_data(&mut self, data: TradeItemManager);
+    fn set_data(&mut self, data: TradeItemViewManager);
 }
 
 impl SetData for TemplateApp {
-    fn set_data(&mut self, data: TradeItemManager) {
+    fn set_data(&mut self, data: TradeItemViewManager) {
         self.data = Some(data);
     }
 }
