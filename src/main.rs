@@ -192,12 +192,12 @@ pub trait BuildExtededData {
 impl BuildExtededData for ExtendedItemData {
     fn new(data: ItemData) -> Self {
         let shipping_price = data.get_shipping_price();
-        let jtd = data.jita_trade_data.unwrap();
-        let atd = data.abroad_trade_data.unwrap();
+        let jtd = data.jita_trade_data.clone().unwrap();
+        let atd = data.abroad_trade_data.clone().unwrap();
         let id = data.type_id;
         let name = data.type_name.to_owned();
         let volume = data.type_volume;
-        let jtb_with_tax = jtd.buy_max*JITA_TAXRATE + jtd.buy_max;
+        let jtb_with_tax = data.get_buy_price_with_tax();
 
         ExtendedItemData {
             type_id: id,
@@ -213,12 +213,17 @@ impl BuildExtededData for ExtendedItemData {
 
 pub trait CalculateFields {
     fn get_shipping_price(&self) -> f64;
+    fn get_buy_price_with_tax(&self) -> f64;
 }
 
 impl CalculateFields for ItemData {
     fn get_shipping_price(&self) -> f64 {
         let shipping_price = &self.type_volume * DELIVERY_PRICE_PER_CUBOMETR;
         return shipping_price as f64;
+    }
+    fn get_buy_price_with_tax(&self) -> f64 {
+        let jtd = &self.jita_trade_data.as_ref().unwrap();
+        return jtd.buy_max * JITA_TAXRATE + jtd.buy_max;
     }
 }
 
@@ -417,7 +422,7 @@ async fn main() -> Result<()> {
         extended_data_collection.push(extended_item_data);
     }
 
-      println!("EXTENDED DATA! \n {:?}", extended_data_collection);
+    println!("EXTENDED DATA! \n {:?}", extended_data_collection);
 
     let item_view_manager = TradeItemViewManager::new(ManagerInitData {
         items: extended_data_collection,
