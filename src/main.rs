@@ -16,7 +16,7 @@ use struct_field_names_as_array::FieldNamesAsSlice;
 
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
 const MIN_SELL_MARGIN: f32 = 1.15;
-const JITA_TAXRATE: f32 = 0.0108;
+const JITA_TAXRATE: f64 = 0.0108;
 const PROFIT_THRESHOLD: i64 = 30000000;
 const FREEZE_RATE_THRESHOLD: f32 = 0.1;
 const MARKET_RATE: i32 = 1;
@@ -160,6 +160,7 @@ impl DataManager for TradeItemViewManager {
                         }
                     }
                     "shipping_price" => row.push(entity.shipping_price.to_string()),
+                    "jita_buy_with_tax" => row.push(entity.jita_buy_with_tax.to_string()),
                     _ => panic!("SOME h-lvl probably custom fields missing!"),
                 }
             }
@@ -179,6 +180,7 @@ pub struct ExtendedItemData {
     type_volume: f32,
     type_name: String,
     jita_trade_data: TradeData,
+    jita_buy_with_tax: f64,
     abroad_trade_data: TradeData,
     shipping_price: f64,
 }
@@ -195,12 +197,14 @@ impl BuildExtededData for ExtendedItemData {
         let id = data.type_id;
         let name = data.type_name.to_owned();
         let volume = data.type_volume;
+        let jtb_with_tax = jtd.buy_max*JITA_TAXRATE + jtd.buy_max;
 
         ExtendedItemData {
             type_id: id,
             type_volume: volume,
             type_name: name,
             jita_trade_data: jtd,
+            jita_buy_with_tax: jtb_with_tax,
             abroad_trade_data: atd,
             shipping_price: shipping_price,
         }
