@@ -203,12 +203,7 @@ impl ExtendedItemData {
     }
 }
 
-pub trait CalculateFields {
-    fn get_shipping_price(&self) -> f64;
-    fn get_buy_price_with_tax(&self) -> f64;
-}
-
-impl CalculateFields for ItemData {
+impl ItemData {
     fn get_shipping_price(&self) -> f64 {
         let shipping_price = &self.type_volume * DELIVERY_PRICE_PER_CUBOMETR;
         return shipping_price as f64;
