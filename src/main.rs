@@ -55,11 +55,7 @@ struct TradeItemManager {
     table_rows: Vec<Vec<String>>,
 }
 
-pub trait DataManager {
-    fn new(data: ManagerInitData) -> Self;
-}
-
-impl DataManager for TradeItemManager {
+impl TradeItemManager {
     fn new(data: ManagerInitData) -> Self {
         TradeItemManager {
             items: data.items,
@@ -78,11 +74,7 @@ pub struct ExtendedItemData {
     shipping_price: f64,
 }
 
-pub trait BuildExtededData {
-    fn new(data: ItemData) -> Self;
-}
-
-impl BuildExtededData for ExtendedItemData {
+impl ExtendedItemData {
     fn new(data: ItemData) -> Self {
         let shipping_price = data.get_shipping_price();
         let jtd = data.jita_trade_data.unwrap();
@@ -145,10 +137,10 @@ fn get_item_data_from_db(names: Vec<&str>) -> Vec<ItemData> {
     println!("PATH:\n{:?}", db_path);
     let src_path_connection = SQL_Connection::open(db_path);
 
-    let exe= std::env::current_exe().unwrap();
+    let exe = std::env::current_exe().unwrap();
     let exe_loc = exe.parent().unwrap();
     let exe_path = Path::new(&exe_loc).join("eve.db");
-    let eve_db:SQL_Connection;
+    let eve_db: SQL_Connection;
 
     if let Err(_err) = src_path_connection {
         eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
