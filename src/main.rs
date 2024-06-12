@@ -1,19 +1,17 @@
-use error_chain::error_chain;
-use goonmetrics::goonmetrics::PriceData;
-use reqwest;
-use rusqlite::{Connection as SQL_Connection, Result as SQL_Result};
 use serde::{Deserialize, Serialize};
 use serde_xml_rs::{from_str, to_string};
 
-use tokio;
-mod goonmetrics;
-use crate::goonmetrics::goonmetrics::*;
-use std::path::Path;
-
 use egui::{Key, Vec2};
 use egui_extras::{Column, TableBuilder};
+use error_chain::error_chain;
 use struct_field_names_as_array::FieldNamesAsSlice;
+use tokio;
 
+mod datagetter;
+mod goonmetrics;
+use datagetter::datagetter::{
+    get_item_data_from_api, get_item_data_from_db, merge_trade_data, ItemData, TradeData,
+};
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
 const MIN_SELL_MARGIN: f32 = 1.15;
 const JITA_TAXRATE: f64 = 0.0108;
@@ -21,33 +19,12 @@ const PROFIT_THRESHOLD: i64 = 30000000;
 const FREEZE_RATE_THRESHOLD: f32 = 0.1;
 const MARKET_RATE: i32 = 1;
 const DAILY_VOL: i64 = 10;
-
 error_chain! {
     foreign_links {
         Io(std::io::Error);
         HttpRequest(reqwest::Error);
     }
 }
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ItemData {
-    type_id: i32,
-    type_volume: f32,
-    type_name: String,
-    jita_trade_data: Option<TradeData>,
-    abroad_trade_data: Option<TradeData>,
-}
-
-#[derive(Debug, PartialEq, Clone, FieldNamesAsSlice, Deserialize, Serialize)]
-struct TradeData {
-    updated: String,
-    weekly_movement: f64,
-    buy_max: f64,
-    buy_listed: i64,
-    sell_min: f64,
-    sell_listed: i64,
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct ManagerInitData {
     items: Vec<ExtendedItemData>,
@@ -181,6 +158,17 @@ pub struct ExtendedItemData {
     shipping_price: f64,
 }
 
+impl ItemData {
+    pub fn get_shipping_price(&self) -> f64 {
+        let shipping_price = &self.type_volume * DELIVERY_PRICE_PER_CUBOMETR;
+        return shipping_price as f64;
+    }
+    pub fn get_buy_price_with_tax(&self) -> f64 {
+        let jtd = &self.jita_trade_data.as_ref().unwrap();
+        return jtd.buy_max * JITA_TAXRATE + jtd.buy_max;
+    }
+}
+
 impl ExtendedItemData {
     fn new(data: ItemData) -> Self {
         let shipping_price = data.get_shipping_price();
@@ -203,180 +191,10 @@ impl ExtendedItemData {
     }
 }
 
-impl ItemData {
-    fn get_shipping_price(&self) -> f64 {
-        let shipping_price = &self.type_volume * DELIVERY_PRICE_PER_CUBOMETR;
-        return shipping_price as f64;
-    }
-    fn get_buy_price_with_tax(&self) -> f64 {
-        let jtd = &self.jita_trade_data.as_ref().unwrap();
-        return jtd.buy_max * JITA_TAXRATE + jtd.buy_max;
-    }
-}
-
 // TODO: move to datagetter
-#[derive(Debug)]
-struct ItemDataFromDb {
-    type_id: i32,
-    type_volume: f32,
-}
-
-// TODO: move to datagetter
-fn get_stored_type_data(conn: &SQL_Connection, type_name: &str) -> SQL_Result<ItemDataFromDb> {
-    let mut stmt = conn.prepare(
-        "SELECT typeID, volume FROM invTypes
-            WHERE typeName = :type_name",
-    )?;
-    let mut rows = stmt.query(&[(":type_name", type_name)])?;
-
-    let mut names: Vec<f32> = Vec::new();
-    while let Some(row) = rows.next()? {
-        names.push(row.get(0)?);
-        names.push(row.get(1)?);
-    }
-    let result = ItemDataFromDb {
-        type_id: names[0] as i32,
-        type_volume: names[1],
-    };
-
-    Ok(result)
-}
-
-// TODO: move to datagetter
-fn get_item_data_from_db(names: Vec<&str>) -> Vec<ItemData> {
-    let curr_dir = std::env::current_dir().unwrap();
-    let db_path = Path::new(&curr_dir).join("src").join("eve.db");
-    println!("PATH:\n{:?}", db_path);
-    let src_path_connection = SQL_Connection::open(db_path);
-
-    let exe = std::env::current_exe().unwrap();
-    let exe_loc = exe.parent().unwrap();
-    let exe_path = Path::new(&exe_loc).join("eve.db");
-    let eve_db: SQL_Connection;
-
-    if let Err(_err) = src_path_connection {
-        eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
-    } else {
-        eve_db = src_path_connection.unwrap()
-    }
-    println!("exe_path:\n{:?}", exe_path);
-
-    names
-        .into_iter()
-        .map(|name| {
-            let stored = get_stored_type_data(&eve_db, name).unwrap();
-            let result = ItemData {
-                type_name: name.to_string(),
-                type_id: stored.type_id,
-                type_volume: stored.type_volume,
-                jita_trade_data: None,
-                abroad_trade_data: None,
-            };
-            return result;
-        })
-        .collect()
-}
-
-// TODO: move to datagetter
-async fn get_item_data_from_api(station_id: &str, item_ids: &Vec<i32>) -> Result<Vec<PriceData>> {
-    let item_ids = &item_ids
-        .into_iter()
-        .map(|id| id.to_string() + ",")
-        .collect::<String>();
-
-    let jita_url = format!(
-        "https://goonmetrics.apps.goonswarm.org/api/price_data/?station_id={station_id}&type_id={item_ids}"
-    );
-
-    let res = reqwest::get(jita_url).await?;
-
-    let body = res.text().await?;
-    println!("Body:\n{}", body);
-
-    let data: Goonmetrics = from_str(&body).unwrap();
-    let pd = data.price_data;
-    return Ok(vec![pd]);
-}
-
-// TODO: move to datagetter
-fn merge_trade_data(
-    items_data: &Vec<ItemData>,
-    jita_trade_data: &Vec<PriceData>,
-    abroad_trade_data: &Vec<PriceData>,
-) -> Vec<ItemData> {
-    let result: Vec<_> = items_data
-        .into_iter()
-        .map(|item| {
-            let mut enriched_item = ItemData {
-                type_name: item.type_name.clone(),
-                type_id: item.type_id,
-                type_volume: item.type_volume,
-                jita_trade_data: None,
-                abroad_trade_data: None,
-            };
-            let id = item.type_id;
-            let jt = &jita_trade_data[0].types;
-
-            let item_jita_trade_data = jt.into_iter().find(|jtd| match jtd {
-                Types::Type(item_type) => {
-                    return item_type.id == id;
-                }
-            });
-
-            match item_jita_trade_data {
-                Some(&goonmetrics::goonmetrics::Types::Type(ref item_type)) => {
-                    enriched_item.jita_trade_data = Some(TradeData {
-                        updated: item_type.updated.clone(),
-                        weekly_movement: item_type
-                            .all
-                            .weekly_movement
-                            .parse::<f64>()
-                            .expect("Fail to parse"),
-                        sell_listed: item_type.sell.listed.parse::<i64>().expect("Fail to parse"),
-                        sell_min: item_type.sell.min.parse::<f64>().expect("Fail to parse"),
-                        buy_listed: item_type.buy.listed.parse::<i64>().expect("Fail to parse"),
-                        buy_max: item_type.buy.max.parse::<f64>().expect("Fail to parse"),
-                    })
-                }
-                _ => panic!("Terrible wrong shit"),
-            }
-
-            let at = &abroad_trade_data[0].types;
-            let item_abroad_trade_data = at.into_iter().find(|atd| match atd {
-                Types::Type(item_type) => {
-                    return item_type.id == id;
-                }
-            });
-
-            match item_abroad_trade_data {
-                Some(&goonmetrics::goonmetrics::Types::Type(ref item_type)) => {
-                    enriched_item.abroad_trade_data = Some(TradeData {
-                        updated: item_type.updated.clone(),
-                        weekly_movement: item_type
-                            .all
-                            .weekly_movement
-                            .parse::<f64>()
-                            .expect("Fail to parse"),
-                        sell_listed: item_type.sell.listed.parse::<i64>().expect("Fail to parse"),
-                        sell_min: item_type.sell.min.parse::<f64>().expect("Fail to parse"),
-                        buy_listed: item_type.buy.listed.parse::<i64>().expect("Fail to parse"),
-                        buy_max: item_type.buy.max.parse::<f64>().expect("Fail to parse"),
-                    })
-                }
-                _ => panic!("Terrible wrong shit"),
-            }
-
-            return enriched_item;
-        })
-        .collect();
-
-    return result;
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-    let name = "Tritanium";
     let names: Vec<&str> = vec!["Tritanium", "Buzzard"];
     // TODO: mod data getter
     let items_data: &Vec<ItemData> = &get_item_data_from_db(names);
@@ -605,7 +423,7 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::goonmetrics::goonmetrics::*;
     #[test]
     fn merge_stuff() {
         let items_data: &Vec<ItemData> = &[
