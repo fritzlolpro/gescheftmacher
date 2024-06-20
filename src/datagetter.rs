@@ -14,7 +14,6 @@ pub mod datagetter {
             HttpRequest(reqwest::Error);
         }
     }
-  
 
     #[derive(Debug)]
     struct ItemDataFromDb {
