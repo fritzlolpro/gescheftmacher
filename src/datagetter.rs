@@ -39,7 +39,6 @@ pub mod datagetter {
         pub abroad_trade_data: Option<TradeData>,
     }
 
-    
     fn get_stored_type_data(conn: &SQL_Connection, type_name: &str) -> SQL_Result<ItemDataFromDb> {
         let mut stmt = conn.prepare(
             "SELECT typeID, volume FROM invTypes
@@ -94,6 +93,7 @@ pub mod datagetter {
             .collect()
     }
 
+    const MAX_GOONMETRICS_ID_QUANTITY: usize = 2;
     pub async fn get_item_data_from_api(
         station_id: &str,
         item_ids: &Vec<i32>,
@@ -115,6 +115,28 @@ pub mod datagetter {
         let data: Goonmetrics = from_str(&body).unwrap();
         let pd = data.price_data;
         return Ok(vec![pd]);
+    }
+
+    pub fn split_large_id_bulks(item_ids: &Vec<i32>, split_treshold: usize) -> Vec<Vec<i32>> {
+        if item_ids.len() <= split_treshold {
+            return vec![item_ids.to_owned()];
+        } else {
+            let mut result: Vec<Vec<i32>> = vec![];
+            let mut batch = vec![];
+
+            for i in 0..item_ids.len() {
+                if batch.len() == split_treshold {
+                    result.push(batch.clone());
+                    batch = vec![];
+                }
+                batch.push(item_ids[i]);
+                if i == item_ids.len() - 1 {
+                    result.push(batch.clone());
+                }
+            }
+
+            return result;
+        }
     }
 
     pub fn merge_trade_data(
@@ -197,5 +219,32 @@ pub mod datagetter {
             .collect();
 
         return result;
+    }
+}
+#[cfg(test)]
+mod tests {
+    use crate::datagetter::datagetter::*;
+    #[test]
+    fn test_split_by_treshold_small() {
+        let treshold: usize = 3;
+        let items = vec![33, 55, 31];
+        assert_eq!(split_large_id_bulks(&items, treshold), vec![items])
+    }
+    #[test]
+    fn test_split_by_treshold_big() {
+        let treshold: usize = 2;
+        let items = vec![33, 55, 31, 77];
+        let exp_result = vec![vec![33, 55], vec![31, 77]];
+        assert_eq!(split_large_id_bulks(&items, treshold), exp_result)
+    }
+    #[test]
+    fn test_split_by_treshold_biger_no_even() {
+        let treshold: usize = 2;
+        let items = vec![33, 55, 31, 77, 99];
+        let binding = vec![33, 55];
+        let binding_2 = vec![31, 77];
+        let binding_3 = vec![99];
+        let exp_result = vec![binding, binding_2, binding_3];
+        assert_eq!(split_large_id_bulks(&items, treshold), exp_result)
     }
 }
