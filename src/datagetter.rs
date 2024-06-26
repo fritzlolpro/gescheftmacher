@@ -5,9 +5,11 @@ pub mod datagetter {
     use reqwest;
     use rusqlite::{Connection as SQL_Connection, Result as SQL_Result};
     use serde::{Deserialize, Serialize};
-
     use std::path::Path;
+    use std::sync::mpsc;
     use struct_field_names_as_array::FieldNamesAsSlice;
+    use tokio::task;
+
     error_chain! {
         foreign_links {
             Io(std::io::Error);
@@ -93,28 +95,59 @@ pub mod datagetter {
             .collect()
     }
 
-    const MAX_GOONMETRICS_ID_QUANTITY: usize = 2;
+    const MAX_GOONMETRICS_ID_QUANTITY: usize = 99;
+
     pub async fn get_item_data_from_api(
         station_id: &str,
         item_ids: &Vec<i32>,
     ) -> Result<Vec<PriceData>> {
-        let item_ids = &item_ids
-            .into_iter()
-            .map(|id| id.to_string() + ",")
-            .collect::<String>();
+        let item_id_batches = split_large_id_bulks(item_ids, MAX_GOONMETRICS_ID_QUANTITY);
 
-        let jita_url = format!(
-        "https://goonmetrics.apps.goonswarm.org/api/price_data/?station_id={station_id}&type_id={item_ids}"
-    );
+        let (tx, rx) = mpsc::channel();
 
-        let res = reqwest::get(jita_url).await?;
+        for item_id_batch in item_id_batches {
+            let transmitter = tx.clone();
+            let st_id = station_id.to_owned().clone();
+            task::spawn(async move {
+                let item_ids = &item_id_batch
+                    .into_iter()
+                    .map(|id| id.to_string() + ",")
+                    .collect::<String>();
 
-        let body = res.text().await?;
-        println!("Body:\n{}", body);
+                let jita_url = format!(
+                    "https://goonmetrics.\
+                    apps.goonswarm.org/api/price_data/\
+                    ?station_id={st_id}&type_id={item_ids}"
+                );
 
-        let data: Goonmetrics = from_str(&body).unwrap();
-        let pd = data.price_data;
-        return Ok(vec![pd]);
+                async fn fetcher(url: &str) -> Result<PriceData> {
+                    let res = reqwest::get(url).await?;
+                    let body = res.text().await?;
+
+                    let data: Goonmetrics = from_str(&body).unwrap();
+                    let pd = data.price_data;
+                    return Ok(pd);
+                }
+
+                let data: PriceData = fetcher(&jita_url).await.unwrap();
+                transmitter.send(data).unwrap();
+            })
+            .await
+            .unwrap();
+        }
+        drop(tx);
+
+        let mut result = vec![];
+        for res in rx {
+            for data in res.types {
+                result.push(data);
+            }
+        }
+
+        let data = PriceData {
+            types: result
+        };
+        return Ok(vec![data]);
     }
 
     pub fn split_large_id_bulks(item_ids: &Vec<i32>, split_treshold: usize) -> Vec<Vec<i32>> {
@@ -182,7 +215,16 @@ pub mod datagetter {
                             buy_max: item_type.buy.max.parse::<f64>().expect("Fail to parse"),
                         })
                     }
-                    _ => panic!("Terrible wrong shit"),
+                    _ => {
+                        let en_item_jita_t_d = enriched_item.jita_trade_data;
+                        panic!(
+                            "fail to compare\n 
+                    JITA TRADE DATA:\n {:?}\n 
+                    ITEM FROM DB DATA:\n {:?} 
+                    ",
+                            item_jita_trade_data, en_item_jita_t_d
+                        )
+                    }
                 }
 
                 let at = &abroad_trade_data[0].types;

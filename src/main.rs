@@ -72,11 +72,10 @@ impl ExtendedItemData {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-    let names: Vec<&str> = vec!["Tritanium", "Buzzard"];
-    // TODO: mod data getter
+    let names: Vec<&str> = vec!["Tritanium", "Buzzard", "Hulk"];
     let items_data: &Vec<ItemData> = &get_item_data_from_db(names);
     println!("Bulk from db:\n{:?}", items_data);
 
