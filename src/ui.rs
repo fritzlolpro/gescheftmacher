@@ -278,7 +278,12 @@ pub mod ui {
             let headers = ctx.data.clone().unwrap().table_headers;
             let rows = ctx.data.clone().unwrap().table_rows;
             TableBuilder::new(ui)
-                .columns(Column::auto().resizable(true), column_quantity)
+                .striped(true)
+                .sense(egui::Sense::click())
+                .columns(
+                    Column::auto().resizable(true).at_least(100.0),
+                    column_quantity,
+                )
                 .header(20.0, |mut header| {
                     for h in headers {
                         header.col(|ui| {
