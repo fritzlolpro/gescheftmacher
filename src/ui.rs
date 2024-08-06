@@ -33,6 +33,17 @@ pub mod ui {
         }
     }
 
+    impl FormatForDisplay for i64 {
+        fn format_for_display(&self) -> String {
+            let mut f: Formatter;
+            f = "[n/ ]".parse().unwrap();
+            f = f.precision(Precision::Decimals(2));
+            let res = f.fmt2(self.to_owned());
+
+            return res.to_owned();
+        }
+    }
+
     impl TradeItemViewManager {
         pub fn new(data: TradeItemViewManagerInitData) -> Self {
             let trade_data_fields: Vec<String> = TradeData::FIELD_NAMES_AS_SLICE
@@ -99,15 +110,14 @@ pub mod ui {
                                     ),
                                     "buy_max" => row
                                         .push(entity.jita_trade_data.buy_max.format_for_display()),
-                                    "buy_listed" => {
-                                        row.push(entity.jita_trade_data.buy_listed.to_string())
-                                    }
-                                    "sell_min" => {
-                                        row.push(entity.jita_trade_data.sell_min.to_string())
-                                    }
-                                    "sell_listed" => {
-                                        row.push(entity.jita_trade_data.sell_listed.to_string())
-                                    }
+                                    "buy_listed" => row.push(
+                                        entity.jita_trade_data.buy_listed.format_for_display(),
+                                    ),
+                                    "sell_min" => row
+                                        .push(entity.jita_trade_data.sell_min.format_for_display()),
+                                    "sell_listed" => row.push(
+                                        entity.jita_trade_data.sell_listed.format_for_display(),
+                                    ),
                                     _ => panic!("SOME FIELDS MISSING!"),
                                 }
                             }
@@ -118,26 +128,32 @@ pub mod ui {
                                     "updated" => {
                                         row.push(entity.abroad_trade_data.updated.to_string())
                                     }
-                                    "weekly_movement" => row
-                                        .push(entity.abroad_trade_data.weekly_movement.to_string()),
-                                    "buy_max" => {
-                                        row.push(entity.abroad_trade_data.buy_max.to_string())
-                                    }
-                                    "buy_listed" => {
-                                        row.push(entity.abroad_trade_data.buy_listed.to_string())
-                                    }
-                                    "sell_min" => {
-                                        row.push(entity.abroad_trade_data.sell_min.to_string())
-                                    }
-                                    "sell_listed" => {
-                                        row.push(entity.abroad_trade_data.sell_listed.to_string())
-                                    }
+                                    "weekly_movement" => row.push(
+                                        entity
+                                            .abroad_trade_data
+                                            .weekly_movement
+                                            .format_for_display(),
+                                    ),
+                                    "buy_max" => row.push(
+                                        entity.abroad_trade_data.buy_max.format_for_display(),
+                                    ),
+                                    "buy_listed" => row.push(
+                                        entity.abroad_trade_data.buy_listed.format_for_display(),
+                                    ),
+                                    "sell_min" => row.push(
+                                        entity.abroad_trade_data.sell_min.format_for_display(),
+                                    ),
+                                    "sell_listed" => row.push(
+                                        entity.abroad_trade_data.sell_listed.format_for_display(),
+                                    ),
                                     _ => panic!("SOME FIELDS MISSING!"),
                                 }
                             }
                         }
-                        "shipping_price" => row.push(entity.shipping_price.to_string()),
-                        "jita_buy_with_tax" => row.push(entity.jita_buy_with_tax.to_string()),
+                        "shipping_price" => row.push(entity.shipping_price.format_for_display()),
+                        "jita_buy_with_tax" => {
+                            row.push(entity.jita_buy_with_tax.format_for_display())
+                        }
                         _ => panic!("SOME h-lvl probably custom fields missing!"),
                     }
                 }
