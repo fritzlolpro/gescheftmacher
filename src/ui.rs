@@ -4,6 +4,9 @@ pub mod ui {
     use egui::Vec2;
     use egui_extras::{Column, TableBuilder};
     use struct_field_names_as_array::FieldNamesAsSlice;
+
+    use numfmt::Formatter;
+    use numfmt::Precision;
     #[derive(Debug, PartialEq, Clone)]
     pub struct TradeItemViewManagerInitData {
         pub items: Vec<ExtendedItemData>,
@@ -13,6 +16,21 @@ pub mod ui {
         items: Vec<ExtendedItemData>,
         table_headers: Vec<String>,
         table_rows: Vec<Vec<String>>,
+    }
+
+    pub trait FormatForDisplay {
+        fn format_for_display(&self) -> String;
+    }
+
+    impl FormatForDisplay for f64 {
+        fn format_for_display(&self) -> String {
+            let mut f: Formatter;
+            f = "[n/ ]".parse().unwrap();
+            f = f.precision(Precision::Decimals(2));
+            let res = f.fmt2(self.to_owned());
+
+            return res.to_owned();
+        }
     }
 
     impl TradeItemViewManager {
@@ -76,12 +94,11 @@ pub mod ui {
                                     "updated" => {
                                         row.push(entity.jita_trade_data.updated.to_string())
                                     }
-                                    "weekly_movement" => {
-                                        row.push(entity.jita_trade_data.weekly_movement.to_string())
-                                    }
-                                    "buy_max" => {
-                                        row.push(entity.jita_trade_data.buy_max.to_string())
-                                    }
+                                    "weekly_movement" => row.push(
+                                        entity.jita_trade_data.weekly_movement.format_for_display(),
+                                    ),
+                                    "buy_max" => row
+                                        .push(entity.jita_trade_data.buy_max.format_for_display()),
                                     "buy_listed" => {
                                         row.push(entity.jita_trade_data.buy_listed.to_string())
                                     }
@@ -317,5 +334,39 @@ pub mod ui {
             );
             ui.label(".");
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use numfmt::Formatter;
+
+    use crate::ui::ui::FormatForDisplay;
+
+    #[test]
+    fn format_thouthands() {
+        let mut f: Formatter;
+        f = "[n/ ]".parse().unwrap();
+        assert_eq!("1 000.5", f.fmt2(1000.5));
+    }
+
+    #[test]
+    fn format_small() {
+        let mut f: Formatter;
+        f = "[n/ ]".parse().unwrap();
+        assert_eq!("4.85", f.fmt2(4.85));
+    }
+
+    #[test]
+    fn format_as_trait() {
+        assert_eq!("4.85", 4.85.format_for_display())
+    }
+    #[test]
+    fn long_no_float() {
+        assert_eq!("1 000 000.0", 1000000.00.format_for_display())
+    }
+    #[test]
+    fn long_with_float() {
+        assert_eq!("1 000 000.55", 1000000.55.format_for_display())
     }
 }
