@@ -41,6 +41,10 @@ pub mod datagetter {
         pub abroad_trade_data: Option<TradeData>,
     }
 
+    // TODO: from this db get unpacked volume try other table if it has packed use packed
+    // get packed volume form invVolumes
+    // SELECT volume FROM invVolumes
+    // WHERE typeID = 22544
     fn get_stored_type_data(conn: &SQL_Connection, type_name: &str) -> SQL_Result<ItemDataFromDb> {
         let mut stmt = conn.prepare(
             "SELECT typeID, volume FROM invTypes
@@ -144,9 +148,7 @@ pub mod datagetter {
             }
         }
 
-        let data = PriceData {
-            types: result
-        };
+        let data = PriceData { types: result };
         return Ok(vec![data]);
     }
 

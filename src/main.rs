@@ -36,6 +36,7 @@ pub struct ExtendedItemData {
     jita_trade_data: TradeData,
     jita_buy_with_tax: f64,
     abroad_trade_data: TradeData,
+    abroad_stocked_ratio: f64,
     shipping_price: f64,
 }
 
@@ -48,6 +49,10 @@ impl ItemData {
         let jtd = &self.jita_trade_data.as_ref().unwrap();
         return jtd.buy_max * JITA_TAXRATE + jtd.buy_max;
     }
+    pub fn get_abroad_stocked_ratio(&self) -> f64 {
+        let abtd = &self.abroad_trade_data.as_ref().unwrap();
+        return abtd.sell_listed as f64 / abtd.weekly_movement;
+    }
 }
 
 impl ExtendedItemData {
@@ -59,6 +64,7 @@ impl ExtendedItemData {
         let name = data.type_name.to_owned();
         let volume = data.type_volume;
         let jtb_with_tax = data.get_buy_price_with_tax();
+        let abroad_stocked_ratio = data.get_abroad_stocked_ratio();
 
         ExtendedItemData {
             type_id: id,
@@ -67,6 +73,7 @@ impl ExtendedItemData {
             jita_trade_data: jtd,
             jita_buy_with_tax: jtb_with_tax,
             abroad_trade_data: atd,
+            abroad_stocked_ratio: abroad_stocked_ratio,
             shipping_price: shipping_price,
         }
     }

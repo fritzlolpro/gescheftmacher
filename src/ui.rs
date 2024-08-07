@@ -20,6 +20,7 @@ pub mod ui {
 
     pub trait FormatForDisplay {
         fn format_for_display(&self) -> String;
+        fn format_for_display_percentage(&self) -> String;
     }
 
     impl FormatForDisplay for f64 {
@@ -28,7 +29,14 @@ pub mod ui {
             f = "[n/ ]".parse().unwrap();
             f = f.precision(Precision::Decimals(2));
             let res = f.fmt2(self.to_owned());
+            return res.to_owned();
+        }
 
+        fn format_for_display_percentage(&self) -> String {
+            let mut f: Formatter;
+            f = "[.2%]".parse().unwrap();
+            f = f.precision(Precision::Decimals(2));
+            let res = f.fmt2(self.to_owned());
             return res.to_owned();
         }
     }
@@ -39,7 +47,13 @@ pub mod ui {
             f = "[n/ ]".parse().unwrap();
             f = f.precision(Precision::Decimals(2));
             let res = f.fmt2(self.to_owned());
-
+            return res.to_owned();
+        }
+        fn format_for_display_percentage(&self) -> String {
+            let mut f: Formatter;
+            f = "[.2%]".parse().unwrap();
+            f = f.precision(Precision::Decimals(2));
+            let res = f.fmt2(self.to_owned());
             return res.to_owned();
         }
     }
@@ -150,7 +164,8 @@ pub mod ui {
                                 }
                             }
                         }
-                        "shipping_price" => row.push(entity.shipping_price.format_for_display()),
+                        "abroad_stocked_ratio" => row.push(entity.abroad_stocked_ratio.format_for_display_percentage()),
+                        "shipping_price" => row.push(entity.shipping_price.to_string()),
                         "jita_buy_with_tax" => {
                             row.push(entity.jita_buy_with_tax.format_for_display())
                         }
