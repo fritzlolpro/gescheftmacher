@@ -17,10 +17,10 @@ pub mod datagetter {
         }
     }
 
-    #[derive(Debug)]
-    struct ItemDataFromDb {
-        type_id: i32,
-        type_volume: f32,
+    #[derive(Debug, PartialEq)]
+    pub struct ItemDataFromDb {
+        pub type_id: i32,
+        pub type_volume: f32,
     }
     #[derive(Debug, PartialEq, Clone, FieldNamesAsSlice, Deserialize, Serialize)]
     pub struct TradeData {
@@ -45,7 +45,10 @@ pub mod datagetter {
     // get packed volume form invVolumes
     // SELECT volume FROM invVolumes
     // WHERE typeID = 22544
-    fn get_stored_type_data(conn: &SQL_Connection, type_name: &str) -> SQL_Result<ItemDataFromDb> {
+    pub fn get_stored_type_data(
+        conn: &SQL_Connection,
+        type_name: &str,
+    ) -> SQL_Result<ItemDataFromDb> {
         let mut stmt = conn.prepare(
             "SELECT typeID, volume FROM invTypes
             WHERE typeName = :type_name",
@@ -63,6 +66,27 @@ pub mod datagetter {
         };
 
         Ok(result)
+    }
+
+    pub fn get_stored_type_volume_packed(conn: &SQL_Connection, type_id: i32) -> SQL_Result<f32> {
+        let mut stmt = conn.prepare(
+            "
+             select volume from invVolumes
+             where typeID = ?1
+            ",
+        )?;
+
+        let mut rows = stmt.query(rusqlite::params![type_id])?;
+
+        let mut res = Vec::new();
+        while let Some(row) = rows.next()? {
+            res.push(row.get(0)?);
+        }
+
+        match res.len() {
+            0 => Err(rusqlite::Error::InvalidQuery),
+            _ => Ok(res[0]),
+        }
     }
 
     pub fn get_item_data_from_db(names: Vec<&str>) -> Vec<ItemData> {
@@ -268,6 +292,8 @@ pub mod datagetter {
 #[cfg(test)]
 mod tests {
     use crate::datagetter::datagetter::*;
+    use rusqlite::Connection as SQL_Connection;
+    use std::path::Path;
     #[test]
     fn test_split_by_treshold_small() {
         let treshold: usize = 3;
@@ -290,5 +316,127 @@ mod tests {
         let binding_3 = vec![99];
         let exp_result = vec![binding, binding_2, binding_3];
         assert_eq!(split_large_id_bulks(&items, treshold), exp_result)
+    }
+
+    #[test]
+    fn get_item_from_db_by_name() {
+        let name = "Hulk";
+        let curr_dir = std::env::current_dir().unwrap();
+        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
+        println!("PATH:\n{:?}", db_path);
+        let src_path_connection = SQL_Connection::open(db_path);
+
+        let exe = std::env::current_exe().unwrap();
+        let exe_loc = exe.parent().unwrap();
+        let exe_path = Path::new(&exe_loc).join("eve.db");
+        let eve_db: SQL_Connection;
+
+        if let Err(_err) = src_path_connection {
+            eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
+        } else {
+            eve_db = src_path_connection.unwrap()
+        }
+        let stored = get_stored_type_data(&eve_db, name).unwrap();
+        println!("aaaa:\n{:?}", stored);
+        assert_eq!(
+            stored,
+            ItemDataFromDb {
+                type_id: 22544,
+                type_volume: 150000.0
+            }
+        )
+    }
+
+    #[test]
+    fn get_item_packed_volume_by_id() {
+        let hulk_id = 22544;
+        let hulk_packed_volume = 3750 as f32;
+
+        let curr_dir = std::env::current_dir().unwrap();
+        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
+        let src_path_connection = SQL_Connection::open(db_path);
+
+        let exe = std::env::current_exe().unwrap();
+        let exe_loc = exe.parent().unwrap();
+        let exe_path = Path::new(&exe_loc).join("eve.db");
+        let eve_db: SQL_Connection;
+
+        if let Err(_err) = src_path_connection {
+            eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
+        } else {
+            eve_db = src_path_connection.unwrap()
+        }
+        let stored = get_stored_type_volume_packed(&eve_db, hulk_id).unwrap();
+        println!("aaaa:\n{:?}", stored);
+        assert_eq!(hulk_packed_volume, stored)
+    }
+
+    #[test]
+    fn return_packed_volume_if_exists() {
+        let name = "Hulk";
+        let hulk_packed_volume = 3750 as f32;
+        let curr_dir = std::env::current_dir().unwrap();
+        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
+        let src_path_connection = SQL_Connection::open(db_path);
+
+        let exe = std::env::current_exe().unwrap();
+        let exe_loc = exe.parent().unwrap();
+        let exe_path = Path::new(&exe_loc).join("eve.db");
+        let eve_db: SQL_Connection;
+
+        if let Err(_err) = src_path_connection {
+            eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
+        } else {
+            eve_db = src_path_connection.unwrap()
+        }
+
+        let stored = get_stored_type_data(&eve_db, name).unwrap();
+        let item_id = stored.type_id;
+
+        let packed_volume = get_stored_type_volume_packed(&eve_db, item_id);
+
+        let volume: f32;
+        if let Err(_err) = packed_volume {
+            volume = stored.type_volume;
+        } else {
+            volume = packed_volume.unwrap();
+        }
+
+        assert_eq!(hulk_packed_volume, volume)
+    }
+
+    #[test]
+    fn return_regular_volume_if_packed_not_exists() {
+        let name = "Tritanium";
+        let trit_volume = 0.01;
+        let curr_dir = std::env::current_dir().unwrap();
+        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
+        let src_path_connection = SQL_Connection::open(db_path);
+
+        let exe = std::env::current_exe().unwrap();
+        let exe_loc = exe.parent().unwrap();
+        let exe_path = Path::new(&exe_loc).join("eve.db");
+        let eve_db: SQL_Connection;
+
+        if let Err(_err) = src_path_connection {
+            eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
+        } else {
+            eve_db = src_path_connection.unwrap()
+        }
+
+        let stored = get_stored_type_data(&eve_db, name).unwrap();
+        let item_id = stored.type_id;
+
+        println!("aaaa:\n{:?}", stored);
+        let packed_volume = get_stored_type_volume_packed(&eve_db, item_id);
+
+        let volume: f32;
+        if let Err(_err) = packed_volume {
+            volume = stored.type_volume;
+        } else {
+            volume = packed_volume.unwrap();
+        }
+
+        assert_eq!(trit_volume, volume)
     }
 }
