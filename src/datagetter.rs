@@ -111,10 +111,21 @@ pub mod datagetter {
             .into_iter()
             .map(|name| {
                 let stored = get_stored_type_data(&eve_db, name).unwrap();
+
+                let item_id = stored.type_id;
+                let packed_volume = get_stored_type_volume_packed(&eve_db, item_id);
+
+                let volume: f32;
+                if let Err(_err) = packed_volume {
+                    volume = stored.type_volume;
+                } else {
+                    volume = packed_volume.unwrap();
+                }
+
                 let result = ItemData {
                     type_name: name.to_string(),
-                    type_id: stored.type_id,
-                    type_volume: stored.type_volume,
+                    type_id: item_id,
+                    type_volume: volume,
                     jita_trade_data: None,
                     abroad_trade_data: None,
                 };

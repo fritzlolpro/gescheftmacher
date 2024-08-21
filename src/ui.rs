@@ -165,7 +165,7 @@ pub mod ui {
                             }
                         }
                         "abroad_stocked_ratio" => row.push(entity.abroad_stocked_ratio.format_for_display_percentage()),
-                        "shipping_price" => row.push(entity.shipping_price.to_string()),
+                        "shipping_price" => row.push(entity.shipping_price.format_for_display()),
                         "jita_buy_with_tax" => {
                             row.push(entity.jita_buy_with_tax.format_for_display())
                         }
