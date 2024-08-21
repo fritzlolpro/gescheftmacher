@@ -14,12 +14,12 @@ use datagetter::datagetter::{
 };
 
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
-const MIN_SELL_MARGIN: f32 = 1.15;
+const MIN_SELL_MARGIN_THRESHOLD: f32 = 1.15;
 const JITA_TAXRATE: f64 = 0.0108;
 const PROFIT_THRESHOLD: i64 = 30000000;
 const FREEZE_RATE_THRESHOLD: f32 = 0.1;
-const MARKET_RATE: i32 = 1;
-const DAILY_VOL: i64 = 10;
+const MARKET_RATE_THRESHOLD: i32 = 1;
+const DAILY_VOL_THRESHOLD: i64 = 10;
 
 error_chain! {
     foreign_links {
@@ -52,6 +52,15 @@ impl ItemData {
     pub fn get_abroad_stocked_ratio(&self) -> f64 {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
         return abtd.sell_listed as f64 / abtd.weekly_movement;
+    }
+    pub fn get_abroad_avg_daily(&self) -> f64 {
+        let abtd = &self.abroad_trade_data.as_ref().unwrap();
+        let abstocked = &self.get_abroad_stocked_ratio();
+        return abtd.weekly_movement / 7.0 / f64::sqrt(*abstocked);
+    }
+    pub fn get_money_freeze_buy(&self) -> f64 {
+        // TODO: wtf with shippin price
+       return self.get_abroad_avg_daily(); 
     }
 }
 
@@ -275,5 +284,34 @@ mod tests {
         );
 
         assert_eq!(desired_merge_result, actual_merge_result);
+    }
+
+    #[test]
+    fn calculate_fields() {
+        let mock_item = ItemData {
+            type_id: 11192,
+            type_volume: 2500.0,
+            type_name: "Buzzard".to_owned(),
+            jita_trade_data: Some(TradeData {
+                updated: "2024-08-21T16:16:48Z".to_owned(),
+                weekly_movement: 865.2,
+                buy_max: 22030000.0,
+                buy_listed: 138,
+                sell_min: 23200000.0,
+                sell_listed: 758,
+            }),
+            abroad_trade_data: Some(TradeData {
+                updated: "2024-08-21T16:15:35Z".to_owned(),
+                weekly_movement: 62.5,
+                buy_max: 15010000.0,
+                buy_listed: 18,
+                sell_min: 21920000.0,
+                sell_listed: 95,
+            }),
+        };
+        println!(
+            "Data abroad avg daily: \n {:?}",
+            mock_item.get_abroad_avg_daily()
+        )
     }
 }
