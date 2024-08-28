@@ -20,6 +20,7 @@ const PROFIT_THRESHOLD: i64 = 30000000;
 const FREEZE_RATE_THRESHOLD: f32 = 0.1;
 const MARKET_RATE_THRESHOLD: i32 = 1;
 const DAILY_VOL_THRESHOLD: i64 = 10;
+const ABROAD_TAX_VALUE: f64 = 0.056;
 
 error_chain! {
     foreign_links {
@@ -45,7 +46,7 @@ impl ItemData {
         let shipping_price = &self.type_volume * DELIVERY_PRICE_PER_CUBOMETR;
         return shipping_price as f64;
     }
-    pub fn get_buy_price_with_tax(&self) -> f64 {
+    pub fn get_jita_buy_price_with_tax(&self) -> f64 {
         let jtd = &self.jita_trade_data.as_ref().unwrap();
         return jtd.buy_max * JITA_TAXRATE + jtd.buy_max;
     }
@@ -53,14 +54,28 @@ impl ItemData {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
         return abtd.sell_listed as f64 / abtd.weekly_movement;
     }
+    pub fn get_abroad_sell_taxed(&self) -> f64 {
+        let abtd = &self.abroad_trade_data.as_ref().unwrap();
+        return abtd.sell_min - abtd.sell_min * ABROAD_TAX_VALUE;
+    }
     pub fn get_abroad_avg_daily(&self) -> f64 {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
         let abstocked = &self.get_abroad_stocked_ratio();
         return abtd.weekly_movement / 7.0 / f64::sqrt(*abstocked);
     }
+    pub fn get_profit_jita_buy_per_unit(&self) -> f64 {
+        return &self.get_abroad_sell_taxed()
+            - &self.get_jita_buy_price_with_tax()
+            - &self.get_shipping_price();
+    }
+    pub fn get_profit_jita_buy_daily(&self) -> f64 {
+        return &self.get_abroad_avg_daily() * &self.get_profit_jita_buy_per_unit();
+    }
     pub fn get_money_freeze_buy(&self) -> f64 {
-        // TODO: wtf with shippin price
-       return self.get_abroad_avg_daily(); 
+        return &self.get_abroad_avg_daily() * &self.get_jita_buy_price_with_tax();
+    }
+    pub fn get_freeze_rate(&self) -> f64 {
+        return &self.get_profit_jita_buy_daily() / &self.get_money_freeze_buy();
     }
 }
 
@@ -72,7 +87,7 @@ impl ExtendedItemData {
         let id = data.type_id;
         let name = data.type_name.to_owned();
         let volume = data.type_volume;
-        let jtb_with_tax = data.get_buy_price_with_tax();
+        let jtb_with_tax = data.get_jita_buy_price_with_tax();
         let abroad_stocked_ratio = data.get_abroad_stocked_ratio();
 
         ExtendedItemData {
@@ -138,6 +153,7 @@ async fn main() -> Result<()> {
 mod tests {
     use super::*;
     use crate::goonmetrics::goonmetrics::*;
+    use crate::ui::ui::FormatForDisplay;
     #[test]
     fn merge_stuff() {
         let items_data: &Vec<ItemData> = &[
@@ -311,7 +327,26 @@ mod tests {
         };
         println!(
             "Data abroad avg daily: \n {:?}",
-            mock_item.get_abroad_avg_daily()
-        )
+            mock_item.get_abroad_avg_daily().format_for_display()
+        );
+        println!(
+            "Abroad sell taxed: \n {:?}",
+            mock_item.get_abroad_sell_taxed().format_for_display()
+        );
+        println!(
+            "Jita_buy profit per unit: \n {:?}",
+            mock_item
+                .get_profit_jita_buy_per_unit()
+                .format_for_display()
+        );
+        println!(
+            "Jita_buy dialy profit: \n {:?}",
+            mock_item.get_profit_jita_buy_daily().format_for_display()
+        );
+        println!(
+            "Money freeze rate buy: \n {:?}",
+            mock_item.get_money_freeze_buy().format_for_display()
+        );
+        println!("Freeze rate: \n {:?}", mock_item.get_freeze_rate());
     }
 }

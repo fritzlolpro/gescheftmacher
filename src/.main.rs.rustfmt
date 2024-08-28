@@ -44,7 +44,7 @@ impl ItemData {
         let shipping_price = &self.type_volume * DELIVERY_PRICE_PER_CUBOMETR;
         return shipping_price as f64;
     }
-    pub fn get_buy_price_with_tax(&self) -> f64 {
+    pub fn get_jita_buy_price_with_tax(&self) -> f64 {
         let jtd = &self.jita_trade_data.as_ref().unwrap();
         return jtd.buy_max * JITA_TAXRATE + jtd.buy_max;
     }
@@ -58,7 +58,7 @@ impl ExtendedItemData {
         let id = data.type_id;
         let name = data.type_name.to_owned();
         let volume = data.type_volume;
-        let jtb_with_tax = data.get_buy_price_with_tax();
+        let jtb_with_tax = data.get_jita_buy_price_with_tax();
 
         ExtendedItemData {
             type_id: id,
