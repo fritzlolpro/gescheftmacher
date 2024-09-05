@@ -71,6 +71,10 @@ impl ItemData {
     pub fn get_profit_jita_buy_daily(&self) -> f64 {
         return &self.get_abroad_avg_daily() * &self.get_profit_jita_buy_per_unit();
     }
+    pub fn get_margin_jita_buy(&self) -> f64 {
+        return &self.get_profit_jita_buy_per_unit()
+            / (&self.get_jita_buy_price_with_tax() + &self.get_shipping_price());
+    }
     pub fn get_money_freeze_buy(&self) -> f64 {
         return &self.get_abroad_avg_daily() * &self.get_jita_buy_price_with_tax();
     }
@@ -311,7 +315,7 @@ mod tests {
             jita_trade_data: Some(TradeData {
                 updated: "2024-08-21T16:16:48Z".to_owned(),
                 weekly_movement: 865.2,
-                buy_max: 22030000.0,
+                buy_max: 10_000_000.0,
                 buy_listed: 138,
                 sell_min: 23200000.0,
                 sell_listed: 758,
@@ -319,15 +323,23 @@ mod tests {
             abroad_trade_data: Some(TradeData {
                 updated: "2024-08-21T16:15:35Z".to_owned(),
                 weekly_movement: 62.5,
-                buy_max: 15010000.0,
+                buy_max: 11_000_000.0,
                 buy_listed: 18,
-                sell_min: 21920000.0,
+                sell_min: 15_000_000.0,
                 sell_listed: 95,
             }),
         };
         println!(
             "Data abroad avg daily: \n {:?}",
             mock_item.get_abroad_avg_daily().format_for_display()
+        );
+        println!(
+            "Jita_buy price with tax: \n {:?}",
+            mock_item.get_jita_buy_price_with_tax().format_for_display()
+        );
+        println!(
+            "Shipping price: \n {:?}",
+            mock_item.get_shipping_price().format_for_display()
         );
         println!(
             "Abroad sell taxed: \n {:?}",
@@ -346,6 +358,12 @@ mod tests {
         println!(
             "Money freeze rate buy: \n {:?}",
             mock_item.get_money_freeze_buy().format_for_display()
+        );
+        println!(
+            "Margin: \n {:?}",
+            mock_item
+                .get_margin_jita_buy()
+                .format_for_display_percentage()
         );
         println!("Freeze rate: \n {:?}", mock_item.get_freeze_rate());
     }
