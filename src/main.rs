@@ -54,6 +54,7 @@ impl ItemData {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
         return abtd.sell_listed as f64 / abtd.weekly_movement;
     }
+    // TODO: add to ExtendedItemData
     pub fn get_abroad_sell_taxed(&self) -> f64 {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
         return abtd.sell_min - abtd.sell_min * ABROAD_TAX_VALUE;
@@ -94,6 +95,8 @@ impl ExtendedItemData {
         let jtb_with_tax = data.get_jita_buy_price_with_tax();
         let abroad_stocked_ratio = data.get_abroad_stocked_ratio();
 
+        // TODO: Add missing fields add to ui
+        // TODO: Add filters to display only good stuff
         ExtendedItemData {
             type_id: id,
             type_volume: volume,
