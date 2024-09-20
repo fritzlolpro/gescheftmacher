@@ -39,6 +39,13 @@ pub struct ExtendedItemData {
     abroad_trade_data: TradeData,
     abroad_stocked_ratio: f64,
     shipping_price: f64,
+    abroad_sell_taxed: f64,
+    abroad_avg_daily: f64,
+    profit_jita_buy_per_unit: f64,
+    profit_jita_buy_daily: f64,
+    margin_jita_buy: f64,
+    money_freeze_buy: f64,
+    freeze_rate: f64,
 }
 
 impl ItemData {
@@ -94,6 +101,13 @@ impl ExtendedItemData {
         let volume = data.type_volume;
         let jtb_with_tax = data.get_jita_buy_price_with_tax();
         let abroad_stocked_ratio = data.get_abroad_stocked_ratio();
+        let abroad_sell_taxed = data.get_abroad_sell_taxed();
+        let abroad_avg_daily = data.get_abroad_avg_daily();
+        let profit_jita_buy_per_unit = data.get_profit_jita_buy_per_unit();
+        let profit_jita_buy_daily = data.get_profit_jita_buy_daily();
+        let margin_jita_buy = data.get_margin_jita_buy();
+        let money_freeze_buy = data.get_money_freeze_buy();
+        let freeze_rate = data.get_freeze_rate();
 
         // TODO: Add missing fields add to ui
         // TODO: Add filters to display only good stuff
@@ -106,9 +120,17 @@ impl ExtendedItemData {
             abroad_trade_data: atd,
             abroad_stocked_ratio: abroad_stocked_ratio,
             shipping_price: shipping_price,
+            abroad_sell_taxed: abroad_sell_taxed,
+            abroad_avg_daily: abroad_avg_daily,
+            profit_jita_buy_per_unit: profit_jita_buy_per_unit,
+            profit_jita_buy_daily: profit_jita_buy_daily,
+            margin_jita_buy: margin_jita_buy,
+            money_freeze_buy: money_freeze_buy,
+            freeze_rate: freeze_rate,
         }
     }
 }
+
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {

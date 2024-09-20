@@ -164,11 +164,30 @@ pub mod ui {
                                 }
                             }
                         }
-                        "abroad_stocked_ratio" => row.push(entity.abroad_stocked_ratio.format_for_display_percentage()),
+                        "abroad_stocked_ratio" => {
+                            row.push(entity.abroad_stocked_ratio.format_for_display_percentage())
+                        }
                         "shipping_price" => row.push(entity.shipping_price.format_for_display()),
                         "jita_buy_with_tax" => {
                             row.push(entity.jita_buy_with_tax.format_for_display())
                         }
+                        "abroad_sell_taxed" => {
+                            row.push(entity.abroad_sell_taxed.format_for_display())
+                        }
+                        "abroad_avg_daily" => {
+                            row.push(entity.abroad_avg_daily.format_for_display())
+                        }
+                        "profit_jita_buy_per_unit" => {
+                            row.push(entity.profit_jita_buy_per_unit.format_for_display())
+                        }
+                        "profit_jita_buy_daily" => {
+                            row.push(entity.profit_jita_buy_daily.format_for_display())
+                        }
+                        "margin_jita_buy" => row.push(entity.margin_jita_buy.format_for_display()),
+                        "money_freeze_buy" => {
+                            row.push(entity.money_freeze_buy.format_for_display())
+                        }
+                        "freeze_rate" => row.push(entity.freeze_rate.format_for_display()),
                         _ => panic!("SOME h-lvl probably custom fields missing!"),
                     }
                 }
