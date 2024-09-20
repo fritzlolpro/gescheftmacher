@@ -61,7 +61,7 @@ impl ItemData {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
         return abtd.sell_listed as f64 / abtd.weekly_movement;
     }
-    // TODO: add to ExtendedItemData
+
     pub fn get_abroad_sell_taxed(&self) -> f64 {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
         return abtd.sell_min - abtd.sell_min * ABROAD_TAX_VALUE;
@@ -109,7 +109,6 @@ impl ExtendedItemData {
         let money_freeze_buy = data.get_money_freeze_buy();
         let freeze_rate = data.get_freeze_rate();
 
-        // TODO: Add missing fields add to ui
         // TODO: Add filters to display only good stuff
         ExtendedItemData {
             type_id: id,
@@ -130,7 +129,6 @@ impl ExtendedItemData {
         }
     }
 }
-
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {

@@ -340,10 +340,11 @@ pub mod ui {
     }
 
     fn show_table(ctx: &mut TemplateApp, ui: &mut egui::Ui) {
-        ui.allocate_ui(Vec2 { x: 600.0, y: 600.0 }, |ui| {
-            let column_quantity = ctx.data.clone().unwrap().table_headers.len();
-            let headers = ctx.data.clone().unwrap().table_headers;
-            let rows = ctx.data.clone().unwrap().table_rows;
+        // TODO: filter some columns
+        let column_quantity = ctx.data.clone().unwrap().table_headers.len();
+        let headers = ctx.data.clone().unwrap().table_headers;
+        let rows = ctx.data.clone().unwrap().table_rows;
+        egui::ScrollArea::both().show(ui, |ui| {
             TableBuilder::new(ui)
                 .striped(true)
                 .sense(egui::Sense::click())
@@ -368,7 +369,7 @@ pub mod ui {
                             }
                         });
                     }
-                });
+                })
         });
     }
 
