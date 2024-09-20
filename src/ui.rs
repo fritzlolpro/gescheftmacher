@@ -340,10 +340,31 @@ pub mod ui {
     }
 
     fn show_table(ctx: &mut TemplateApp, ui: &mut egui::Ui) {
-        // TODO: filter some columns
-        let column_quantity = ctx.data.clone().unwrap().table_headers.len();
-        let headers = ctx.data.clone().unwrap().table_headers;
-        let rows = ctx.data.clone().unwrap().table_rows;
+        // TODO: add filtering to ui by adding checkboxes
+        let filtered = vec![
+            "shipping_price".to_owned(),
+            "profit_jita_buy_per_unit".to_owned(),
+            "type_id".to_owned(),
+            "type_volume".to_owned(),
+        ];
+
+    
+
+        let column_quantity = ctx.data.clone().unwrap().table_headers.len() - filtered.len();
+        let mut headers = ctx.data.clone().unwrap().table_headers;
+        let mut rows = ctx.data.clone().unwrap().table_rows;
+
+        filtered.iter().for_each(|f| {
+            if let Some(index) = headers.iter().position(|h| h == f) {
+                headers.remove(index);
+                rows.iter_mut().for_each(|r| {
+                    r.remove(index);
+                });
+                
+            }
+        });
+
+     
         egui::ScrollArea::both().show(ui, |ui| {
             TableBuilder::new(ui)
                 .striped(true)
