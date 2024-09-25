@@ -41,10 +41,6 @@ pub mod datagetter {
         pub abroad_trade_data: Option<TradeData>,
     }
 
-    // TODO: from this db get unpacked volume try other table if it has packed use packed
-    // get packed volume form invVolumes
-    // SELECT volume FROM invVolumes
-    // WHERE typeID = 22544
     pub fn get_stored_type_data(
         conn: &SQL_Connection,
         type_name: &str,
@@ -66,6 +62,22 @@ pub mod datagetter {
         };
 
         Ok(result)
+    }
+
+    pub fn get_tradable_item_names(conn: &SQL_Connection) -> SQL_Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            "SELECT typeName FROM invTypes
+         WHERE marketGroupID IS NOT NULL",
+        )?;
+
+        let mut rows = stmt.query([])?;
+
+        let mut names: Vec<String> = Vec::new();
+        while let Some(row) = rows.next()? {
+            names.push(row.get(0)?);
+        }
+
+        Ok(names)
     }
 
     pub fn get_stored_type_volume_packed(conn: &SQL_Connection, type_id: i32) -> SQL_Result<f32> {
@@ -255,9 +267,9 @@ pub mod datagetter {
                     _ => {
                         let en_item_jita_t_d = enriched_item.jita_trade_data;
                         panic!(
-                            "fail to compare\n 
-                    JITA TRADE DATA:\n {:?}\n 
-                    ITEM FROM DB DATA:\n {:?} 
+                            "fail to compare\n
+                    JITA TRADE DATA:\n {:?}\n
+                    ITEM FROM DB DATA:\n {:?}
                     ",
                             item_jita_trade_data, en_item_jita_t_d
                         )
@@ -302,9 +314,11 @@ pub mod datagetter {
 }
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::datagetter::datagetter::*;
     use rusqlite::Connection as SQL_Connection;
     use std::path::Path;
+
     #[test]
     fn test_split_by_treshold_small() {
         let treshold: usize = 3;
@@ -356,6 +370,32 @@ mod tests {
                 type_volume: 150000.0
             }
         )
+    }
+
+    #[test]
+    fn test_get_tradable_item_names_some_results() {
+        let curr_dir = std::env::current_dir().unwrap();
+        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
+        let src_path_connection = SQL_Connection::open(db_path);
+
+        let result = get_tradable_item_names(&src_path_connection.unwrap()).unwrap();
+
+        assert!(!result.is_empty());
+        for name in &result {
+            assert!(name.len() > 0);
+        }
+    }
+
+    #[test]
+    fn test_get_tradable_item_names_eve_db_not_found() {
+        let curr_dir = std::env::current_dir().unwrap();
+        let db_path = Path::new(&curr_dir).join("src").join("nonexistent.db");
+        let src_path_connection = SQL_Connection::open(db_path);
+
+        match get_tradable_item_names(&src_path_connection.unwrap()) {
+            Err(_) => (),
+            Ok(_) => panic!("Expected an error"),
+        }
     }
 
     #[test]
