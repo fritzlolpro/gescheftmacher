@@ -325,6 +325,7 @@ mod tests {
         let items = vec![33, 55, 31];
         assert_eq!(split_large_id_bulks(&items, treshold), vec![items])
     }
+
     #[test]
     fn test_split_by_treshold_big() {
         let treshold: usize = 2;
@@ -332,6 +333,7 @@ mod tests {
         let exp_result = vec![vec![33, 55], vec![31, 77]];
         assert_eq!(split_large_id_bulks(&items, treshold), exp_result)
     }
+    
     #[test]
     fn test_split_by_treshold_biger_no_even() {
         let treshold: usize = 2;
