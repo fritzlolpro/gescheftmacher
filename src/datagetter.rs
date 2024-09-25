@@ -67,7 +67,7 @@ pub mod datagetter {
     pub fn get_tradable_item_names(conn: &SQL_Connection) -> SQL_Result<Vec<String>> {
         let mut stmt = conn.prepare(
             "SELECT typeName FROM invTypes
-         WHERE marketGroupID IS NOT NULL",
+         WHERE marketGroupID IS NOT NULL AND description <> ''",
         )?;
 
         let mut rows = stmt.query([])?;
@@ -121,7 +121,7 @@ pub mod datagetter {
         }
     }
 
-    pub fn get_item_data_from_db(names: Vec<&str>) -> Vec<ItemData> {
+    pub fn get_item_data_from_db(names: Vec<String>) -> Vec<ItemData> {
         let curr_dir = std::env::current_dir().unwrap();
         let db_path = Path::new(&curr_dir).join("src").join("eve.db");
         println!("PATH:\n{:?}", db_path);
@@ -142,7 +142,7 @@ pub mod datagetter {
         names
             .into_iter()
             .map(|name| {
-                let stored = get_stored_type_data(&eve_db, name).unwrap();
+                let stored = get_stored_type_data(&eve_db, &name).unwrap();
 
                 let item_id = stored.type_id;
                 let packed_volume = get_stored_type_volume_packed(&eve_db, item_id);
@@ -517,7 +517,7 @@ mod tests {
     fn get_tradable_item_names_from_db_success_length_as_in_explorer() {
         let result = get_tradable_item_names_from_db();
 
-        assert_eq!(result.len(), 16947);
+        assert_eq!(result.len(), 12567);
     }
 
     #[test]

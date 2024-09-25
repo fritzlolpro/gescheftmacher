@@ -10,7 +10,7 @@ use ui::ui::{render_ui, TradeItemViewManager, TradeItemViewManagerInitData};
 mod datagetter;
 mod goonmetrics;
 use datagetter::datagetter::{
-    get_item_data_from_api, get_item_data_from_db, merge_trade_data, ItemData, TradeData,
+    get_item_data_from_api, get_item_data_from_db, get_tradable_item_names_from_db, merge_trade_data, ItemData, TradeData
 };
 
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
@@ -133,7 +133,11 @@ impl ExtendedItemData {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-    let names: Vec<&str> = vec!["Tritanium", "Buzzard", "Hulk"];
+    // let names: Vec<&str> = vec!["Tritanium", "Buzzard", "Hulk"];
+    // TODO: hardcode names cant work with 16k strings
+    // TODO: filter out items not interesting for trade dunno how
+    let names: Vec<String> = get_tradable_item_names_from_db();
+    
     let items_data: &Vec<ItemData> = &get_item_data_from_db(names);
     println!("Bulk from db:\n{:?}", items_data);
 
