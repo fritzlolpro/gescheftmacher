@@ -80,6 +80,26 @@ pub mod datagetter {
         Ok(names)
     }
 
+    pub fn get_tradable_item_names_from_db() -> Vec<String> {
+        // Assume we have a connection to the SQLite database file (eve.db)
+        let db_path = Path::new("src").join("eve.db");
+        let src_path_connection = SQL_Connection::open(db_path);
+
+        match src_path_connection {
+            Ok(connection) => {
+                // Execute a SELECT query on the 'tradable_items' table
+                let tradable_item_names = get_tradable_item_names(&connection).unwrap();
+
+                // Return the vector of item names
+                tradable_item_names
+            }
+            Err(_e) => {
+                // If an error occurs while establishing a connection, return an empty vector
+                vec![]
+            }
+        }
+    }
+
     pub fn get_stored_type_volume_packed(conn: &SQL_Connection, type_id: i32) -> SQL_Result<f32> {
         let mut stmt = conn.prepare(
             "
@@ -333,7 +353,7 @@ mod tests {
         let exp_result = vec![vec![33, 55], vec![31, 77]];
         assert_eq!(split_large_id_bulks(&items, treshold), exp_result)
     }
-    
+
     #[test]
     fn test_split_by_treshold_biger_no_even() {
         let treshold: usize = 2;
@@ -491,5 +511,35 @@ mod tests {
         }
 
         assert_eq!(trit_volume, volume)
+    }
+
+    #[test]
+    fn get_tradable_item_names_from_db_success_length_as_in_explorer() {
+        let result = get_tradable_item_names_from_db();
+
+        assert_eq!(result.len(), 16947);
+    }
+
+    #[test]
+    fn get_tradable_item_names_has_minerals() {
+        let expected_minerals = vec![
+            "Plagioclase",
+            "Spodumain",
+            "Kernite",
+            "Hedbergite",
+            "Arkonor",
+            "Tritanium",
+            "Pyerite",
+            "Mexallon",
+            "Isogen",
+            "Nocxium",
+            "Zydrine",
+            "Megacyte",
+        ];
+
+        // replace with actual tradable item names
+        let result = get_tradable_item_names_from_db();
+        let minerals = &result[..12];
+        assert_eq!(minerals, expected_minerals);
     }
 }
