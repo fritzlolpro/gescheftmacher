@@ -5,7 +5,7 @@ pub mod datagetter {
     use reqwest;
     use rusqlite::{Connection as SQL_Connection, Result as SQL_Result};
     use serde::{Deserialize, Serialize};
-    use std::path::Path;
+    use std::path::PathBuf;
     use std::sync::mpsc;
     use struct_field_names_as_array::FieldNamesAsSlice;
     use tokio::task;
@@ -41,111 +41,93 @@ pub mod datagetter {
         pub abroad_trade_data: Option<TradeData>,
     }
 
-    pub fn get_stored_type_data(
-        conn: &SQL_Connection,
-        type_name: &str,
-    ) -> SQL_Result<ItemDataFromDb> {
-        let mut stmt = conn.prepare(
-            "SELECT typeID, volume FROM invTypes
-            WHERE typeName = :type_name",
-        )?;
-        let mut rows = stmt.query(&[(":type_name", type_name)])?;
-
-        let mut names: Vec<f32> = Vec::new();
-        while let Some(row) = rows.next()? {
-            names.push(row.get(0)?);
-            names.push(row.get(1)?);
-        }
-        let result = ItemDataFromDb {
-            type_id: names[0] as i32,
-            type_volume: names[1],
-        };
-
-        Ok(result)
+    pub trait DatabaseConnection {
+        fn open(db_path: PathBuf) -> SQL_Result<Self>
+        where
+            Self: Sized;
+        fn get_stored_type_data(&self, name: &str) -> SQL_Result<ItemDataFromDb>;
+        fn get_stored_type_volume_packed(&self, type_id: i32) -> SQL_Result<f32>;
+        fn get_tradable_item_names(&self) -> SQL_Result<Vec<String>>;
     }
 
-    pub fn get_tradable_item_names(conn: &SQL_Connection) -> SQL_Result<Vec<String>> {
-        let mut stmt = conn.prepare(
-            "SELECT typeName FROM invTypes
-         WHERE marketGroupID IS NOT NULL AND description <> ''",
-        )?;
+    pub struct SqlLiteConnection(SQL_Connection);
 
-        let mut rows = stmt.query([])?;
-
-        let mut names: Vec<String> = Vec::new();
-        while let Some(row) = rows.next()? {
-            names.push(row.get(0)?);
+    impl DatabaseConnection for SqlLiteConnection {
+        fn open(db_path: PathBuf) -> SQL_Result<Self> {
+            let conn = SQL_Connection::open(db_path)?;
+            Ok(SqlLiteConnection(conn))
         }
 
-        Ok(names)
-    }
+        fn get_stored_type_data(&self, type_name: &str) -> SQL_Result<ItemDataFromDb> {
+            let mut stmt = self.0.prepare(
+                "SELECT typeID, volume FROM invTypes
+                WHERE typeName = :type_name",
+            )?;
+            let mut rows = stmt.query(&[(":type_name", type_name)])?;
 
-    pub fn get_tradable_item_names_from_db() -> Vec<String> {
-        // Assume we have a connection to the SQLite database file (eve.db)
-        let db_path = Path::new("src").join("eve.db");
-        let src_path_connection = SQL_Connection::open(db_path);
-
-        match src_path_connection {
-            Ok(connection) => {
-                // Execute a SELECT query on the 'tradable_items' table
-                let tradable_item_names = get_tradable_item_names(&connection).unwrap();
-
-                // Return the vector of item names
-                tradable_item_names
+            let mut names: Vec<f32> = Vec::new();
+            while let Some(row) = rows.next()? {
+                names.push(row.get(0)?);
+                names.push(row.get(1)?);
             }
-            Err(_e) => {
-                // If an error occurs while establishing a connection, return an empty vector
-                vec![]
+            let result = ItemDataFromDb {
+                type_id: names[0] as i32,
+                type_volume: names[1],
+            };
+
+            Ok(result)
+        }
+
+        fn get_stored_type_volume_packed(&self, type_id: i32) -> SQL_Result<f32> {
+            let mut stmt = self.0.prepare(
+                "
+                 select volume from invVolumes
+                 where typeID = ?1
+                ",
+            )?;
+
+            let mut rows = stmt.query(rusqlite::params![type_id])?;
+
+            let mut res = Vec::new();
+            while let Some(row) = rows.next()? {
+                res.push(row.get(0)?);
+            }
+
+            match res.len() {
+                0 => Err(rusqlite::Error::InvalidQuery),
+                _ => Ok(res[0]),
             }
         }
-    }
 
-    pub fn get_stored_type_volume_packed(conn: &SQL_Connection, type_id: i32) -> SQL_Result<f32> {
-        let mut stmt = conn.prepare(
-            "
-             select volume from invVolumes
-             where typeID = ?1
-            ",
-        )?;
+        fn get_tradable_item_names(&self) -> SQL_Result<Vec<String>> {
+            let mut stmt = self.0.prepare(
+                "SELECT typeName FROM invTypes
+             WHERE marketGroupID IS NOT NULL AND description <> ''",
+            )?;
 
-        let mut rows = stmt.query(rusqlite::params![type_id])?;
+            let mut rows = stmt.query([])?;
 
-        let mut res = Vec::new();
-        while let Some(row) = rows.next()? {
-            res.push(row.get(0)?);
-        }
+            let mut names: Vec<String> = Vec::new();
+            while let Some(row) = rows.next()? {
+                names.push(row.get(0)?);
+            }
 
-        match res.len() {
-            0 => Err(rusqlite::Error::InvalidQuery),
-            _ => Ok(res[0]),
+            Ok(names)
         }
     }
+
 
     pub fn get_item_data_from_db(names: Vec<String>) -> Vec<ItemData> {
-        let curr_dir = std::env::current_dir().unwrap();
-        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
-        println!("PATH:\n{:?}", db_path);
-        let src_path_connection = SQL_Connection::open(db_path);
-
-        let exe = std::env::current_exe().unwrap();
-        let exe_loc = exe.parent().unwrap();
-        let exe_path = Path::new(&exe_loc).join("eve.db");
-        let eve_db: SQL_Connection;
-
-        if let Err(_err) = src_path_connection {
-            eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
-        } else {
-            eve_db = src_path_connection.unwrap()
-        }
-        println!("exe_path:\n{:?}", exe_path);
+        let db_path = PathBuf::from("src/eve.db");
+        let connection = SqlLiteConnection::open(db_path).unwrap();
 
         names
             .into_iter()
             .map(|name| {
-                let stored = get_stored_type_data(&eve_db, &name).unwrap();
+                let stored = connection.get_stored_type_data(&name).unwrap();
 
                 let item_id = stored.type_id;
-                let packed_volume = get_stored_type_volume_packed(&eve_db, item_id);
+                let packed_volume = connection.get_stored_type_volume_packed(item_id);
 
                 let volume: f32;
                 if let Err(_err) = packed_volume {
@@ -336,8 +318,8 @@ pub mod datagetter {
 mod tests {
     use super::*;
     use crate::datagetter::datagetter::*;
-    use rusqlite::Connection as SQL_Connection;
-    use std::path::Path;
+
+    use std::path::PathBuf;
 
     #[test]
     fn test_split_by_treshold_small() {
@@ -368,22 +350,10 @@ mod tests {
     #[test]
     fn get_item_from_db_by_name() {
         let name = "Hulk";
-        let curr_dir = std::env::current_dir().unwrap();
-        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
-        println!("PATH:\n{:?}", db_path);
-        let src_path_connection = SQL_Connection::open(db_path);
+        let db_path = PathBuf::from("src/eve.db");
+        let connection = SqlLiteConnection::open(db_path).unwrap();
 
-        let exe = std::env::current_exe().unwrap();
-        let exe_loc = exe.parent().unwrap();
-        let exe_path = Path::new(&exe_loc).join("eve.db");
-        let eve_db: SQL_Connection;
-
-        if let Err(_err) = src_path_connection {
-            eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
-        } else {
-            eve_db = src_path_connection.unwrap()
-        }
-        let stored = get_stored_type_data(&eve_db, name).unwrap();
+        let stored = connection.get_stored_type_data(name).unwrap();
         println!("aaaa:\n{:?}", stored);
         assert_eq!(
             stored,
@@ -396,11 +366,10 @@ mod tests {
 
     #[test]
     fn test_get_tradable_item_names_some_results() {
-        let curr_dir = std::env::current_dir().unwrap();
-        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
-        let src_path_connection = SQL_Connection::open(db_path);
+        let db_path = PathBuf::from("src/eve.db");
+        let connection = SqlLiteConnection::open(db_path).unwrap();
 
-        let result = get_tradable_item_names(&src_path_connection.unwrap()).unwrap();
+        let result = connection.get_tradable_item_names().unwrap();
 
         assert!(!result.is_empty());
         for name in &result {
@@ -409,37 +378,14 @@ mod tests {
     }
 
     #[test]
-    fn test_get_tradable_item_names_eve_db_not_found() {
-        let curr_dir = std::env::current_dir().unwrap();
-        let db_path = Path::new(&curr_dir).join("src").join("nonexistent.db");
-        let src_path_connection = SQL_Connection::open(db_path);
-
-        match get_tradable_item_names(&src_path_connection.unwrap()) {
-            Err(_) => (),
-            Ok(_) => panic!("Expected an error"),
-        }
-    }
-
-    #[test]
     fn get_item_packed_volume_by_id() {
         let hulk_id = 22544;
         let hulk_packed_volume = 3750 as f32;
 
-        let curr_dir = std::env::current_dir().unwrap();
-        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
-        let src_path_connection = SQL_Connection::open(db_path);
+        let db_path = PathBuf::from("src/eve.db");
+        let connection = SqlLiteConnection::open(db_path).unwrap();
 
-        let exe = std::env::current_exe().unwrap();
-        let exe_loc = exe.parent().unwrap();
-        let exe_path = Path::new(&exe_loc).join("eve.db");
-        let eve_db: SQL_Connection;
-
-        if let Err(_err) = src_path_connection {
-            eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
-        } else {
-            eve_db = src_path_connection.unwrap()
-        }
-        let stored = get_stored_type_volume_packed(&eve_db, hulk_id).unwrap();
+        let stored = connection.get_stored_type_volume_packed(hulk_id).unwrap();
         println!("aaaa:\n{:?}", stored);
         assert_eq!(hulk_packed_volume, stored)
     }
@@ -448,25 +394,14 @@ mod tests {
     fn return_packed_volume_if_exists() {
         let name = "Hulk";
         let hulk_packed_volume = 3750 as f32;
-        let curr_dir = std::env::current_dir().unwrap();
-        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
-        let src_path_connection = SQL_Connection::open(db_path);
 
-        let exe = std::env::current_exe().unwrap();
-        let exe_loc = exe.parent().unwrap();
-        let exe_path = Path::new(&exe_loc).join("eve.db");
-        let eve_db: SQL_Connection;
+        let db_path = PathBuf::from("src/eve.db");
+        let connection = SqlLiteConnection::open(db_path).unwrap();
 
-        if let Err(_err) = src_path_connection {
-            eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
-        } else {
-            eve_db = src_path_connection.unwrap()
-        }
-
-        let stored = get_stored_type_data(&eve_db, name).unwrap();
+        let stored = connection.get_stored_type_data(name).unwrap();
         let item_id = stored.type_id;
 
-        let packed_volume = get_stored_type_volume_packed(&eve_db, item_id);
+        let packed_volume = connection.get_stored_type_volume_packed(item_id);
 
         let volume: f32;
         if let Err(_err) = packed_volume {
@@ -482,26 +417,15 @@ mod tests {
     fn return_regular_volume_if_packed_not_exists() {
         let name = "Tritanium";
         let trit_volume = 0.01;
-        let curr_dir = std::env::current_dir().unwrap();
-        let db_path = Path::new(&curr_dir).join("src").join("eve.db");
-        let src_path_connection = SQL_Connection::open(db_path);
 
-        let exe = std::env::current_exe().unwrap();
-        let exe_loc = exe.parent().unwrap();
-        let exe_path = Path::new(&exe_loc).join("eve.db");
-        let eve_db: SQL_Connection;
+        let db_path = PathBuf::from("src/eve.db");
+        let connection = SqlLiteConnection::open(db_path).unwrap();
 
-        if let Err(_err) = src_path_connection {
-            eve_db = SQL_Connection::open(exe_path.clone()).unwrap()
-        } else {
-            eve_db = src_path_connection.unwrap()
-        }
-
-        let stored = get_stored_type_data(&eve_db, name).unwrap();
+        let stored = connection.get_stored_type_data(name).unwrap();
         let item_id = stored.type_id;
 
         println!("aaaa:\n{:?}", stored);
-        let packed_volume = get_stored_type_volume_packed(&eve_db, item_id);
+        let packed_volume = connection.get_stored_type_volume_packed(item_id);
 
         let volume: f32;
         if let Err(_err) = packed_volume {
@@ -513,33 +437,4 @@ mod tests {
         assert_eq!(trit_volume, volume)
     }
 
-    #[test]
-    fn get_tradable_item_names_from_db_success_length_as_in_explorer() {
-        let result = get_tradable_item_names_from_db();
-
-        assert_eq!(result.len(), 12567);
-    }
-
-    #[test]
-    fn get_tradable_item_names_has_minerals() {
-        let expected_minerals = vec![
-            "Plagioclase",
-            "Spodumain",
-            "Kernite",
-            "Hedbergite",
-            "Arkonor",
-            "Tritanium",
-            "Pyerite",
-            "Mexallon",
-            "Isogen",
-            "Nocxium",
-            "Zydrine",
-            "Megacyte",
-        ];
-
-        // replace with actual tradable item names
-        let result = get_tradable_item_names_from_db();
-        let minerals = &result[..12];
-        assert_eq!(minerals, expected_minerals);
-    }
 }

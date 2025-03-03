@@ -9,14 +9,16 @@ use struct_field_names_as_array::FieldNamesAsSlice;
 use tokio;
 
 mod static_data;
-use static_data::static_data::{
-    TradePile
-};
+use static_data::static_data::TradePile;
 mod datagetter;
 mod goonmetrics;
 use datagetter::datagetter::{
-    get_item_data_from_api, get_item_data_from_db, get_tradable_item_names_from_db, merge_trade_data, ItemData, TradeData
+    get_item_data_from_api, get_item_data_from_db,
+    merge_trade_data, ItemData, TradeData,
 };
+
+use numfmt::Formatter;
+use numfmt::Precision;
 
 const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
 const MIN_SELL_MARGIN_THRESHOLD: f32 = 1.15;
@@ -138,11 +140,11 @@ impl ExtendedItemData {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-    // let names: Vec<String> = vec!["Tritanium", "Buzzard", "Hulk"].into_iter().map(|s| s.to_owned()).collect();
+    let names: Vec<String> = vec!["Hulk"].into_iter().map(|s| s.to_owned()).collect();
     // let names: Vec<String> = get_tradable_item_names_from_db();
     let pile = TradePile::new();
-    let names = pile.items;
-    
+    // let names = pile.items;
+
     let items_data: &Vec<ItemData> = &get_item_data_from_db(names);
     println!("Bulk from db:\n{:?}", items_data);
 
@@ -174,15 +176,9 @@ async fn main() -> Result<()> {
     //TODO: Save data to some db to avoid crushin API
     println!("EXTENDED DATA! \n {:?}", extended_data_collection);
 
-    // let item_view_manager = TradeItemViewManager::new(TradeItemViewManagerInitData {
-    //     items: extended_data_collection,
-    // });
-    // UI
+    
     run(extended_data_collection.clone());
-    // match render_ui(item_view_manager) {
-    //     Err(_) => panic!("aaaaa"),
-    //     _ => (),
-    // }
+   
 
     Ok(())
 }
@@ -200,16 +196,14 @@ fn get_data(state: tauri::State<AppData>) -> String {
 }
 
 struct AppData {
-    data: Vec<ExtendedItemData>
+    data: Vec<ExtendedItemData>,
 }
 use tauri::{Builder, Manager};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run(data: Vec<ExtendedItemData> ) {
+pub fn run(data: Vec<ExtendedItemData>) {
     Builder::default()
         .setup(move |app| {
-            app.manage(AppData {
-                data: data.clone(),
-            });
+            app.manage(AppData { data: data.clone() });
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -218,11 +212,51 @@ pub fn run(data: Vec<ExtendedItemData> ) {
         .expect("error while running tauri application");
 }
 
+pub trait FormatForDisplay {
+    fn format_for_display(&self) -> String;
+    fn format_for_display_percentage(&self) -> String;
+}
+
+impl FormatForDisplay for f64 {
+    fn format_for_display(&self) -> String {
+        let mut f: Formatter;
+        f = "[n/ ]".parse().unwrap();
+        f = f.precision(Precision::Decimals(2));
+        let res = f.fmt2(self.to_owned());
+        return res.to_owned();
+    }
+
+    fn format_for_display_percentage(&self) -> String {
+        let mut f: Formatter;
+        f = "[.2%]".parse().unwrap();
+        f = f.precision(Precision::Decimals(2));
+        let res = f.fmt2(self.to_owned());
+        return res.to_owned();
+    }
+}
+
+impl FormatForDisplay for i64 {
+    fn format_for_display(&self) -> String {
+        let mut f: Formatter;
+        f = "[n/ ]".parse().unwrap();
+        f = f.precision(Precision::Decimals(2));
+        let res = f.fmt2(self.to_owned());
+        return res.to_owned();
+    }
+    fn format_for_display_percentage(&self) -> String {
+        let mut f: Formatter;
+        f = "[.2%]".parse().unwrap();
+        f = f.precision(Precision::Decimals(2));
+        let res = f.fmt2(self.to_owned());
+        return res.to_owned();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::goonmetrics::goonmetrics::*;
-    use crate::ui::ui::FormatForDisplay;
+
     #[test]
     fn merge_stuff() {
         let items_data: &Vec<ItemData> = &[

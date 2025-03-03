@@ -134,7 +134,7 @@ function formatNumberIntoString(number: number) {
   return new Intl.NumberFormat("RU-ru").format(number) 
 }
 
-function truncateDecimal(number) {
+function truncateDecimal(number: number) {
   return Number(number.toFixed(2));
 }
 
