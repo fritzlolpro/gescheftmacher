@@ -91,11 +91,23 @@ pub mod datagetter {
         fn create_extended_item_data_table(&self) -> SQL_Result<()> {
             self.0.execute(
                 "CREATE TABLE IF NOT EXISTS extended_item_data (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    type_id INTEGER NOT NULL, 
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, 
-                    jita_trade_data JSON NOT NULL,
-                    abroad_trade_data JSON NOT NULL)",
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type_id INTEGER NOT NULL, 
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, 
+                type_volume REAL NOT NULL,  -- Assuming 'type_volume' is a REAL value
+                type_name TEXT NOT NULL, 
+                jita_trade_data JSON NOT NULL,
+                abroad_trade_data JSON NOT NULL,
+                jita_buy_with_tax REAL NOT NULL,
+                abroad_stocked_ratio REAL NOT NULL,
+                shipping_price REAL NOT NULL,
+                abroad_sell_taxed REAL NOT NULL,
+                abroad_avg_daily REAL NOT NULL,
+                profit_jita_buy_per_unit REAL NOT NULL,
+                profit_jita_buy_daily REAL NOT NULL,
+                margin_jita_buy REAL NOT NULL,
+                money_freeze_buy REAL NOT NULL,
+                freeze_rate REAL NOT NULL)",
                 [],
             )?;
 
@@ -349,9 +361,12 @@ pub mod datagetter {
 mod tests {
     use super::*;
     use crate::datagetter::datagetter::*;
-
+    use rusqlite::{
+        Connection as SQL_Connection, Error as SQL_Error, Result as SQL_Result, Statement,
+    };
+    use rusqlite::{Row, Rows};
+    use std::any::type_name_of_val;
     use std::path::PathBuf;
-
     #[test]
     fn test_split_by_treshold_small() {
         let treshold: usize = 3;
@@ -470,27 +485,96 @@ mod tests {
 
     #[test]
     fn test_create_extended_item_data_table() {
-        let db_path = PathBuf::from("test.db"); // Use a unique file for testing
-
-        // 1. Create a connection to the database (it will be created if it doesn't exist)
+        let db_path = PathBuf::from("test.db");
         let mut conn = SqlLiteConnection::open(db_path.clone()).unwrap();
 
-        // 2. Execute the `create_extended_item_data_table` function
-        conn.create_extended_item_data_table().unwrap(); // Assuming this function returns a Result<(), rusqlite::Error>
-
-        // 3. Check if the table exists in the database
+        conn.create_extended_item_data_table().unwrap();
         let query =
             "SELECT name FROM sqlite_master WHERE type='table' AND name='extended_item_data'";
-        let mut stmt = conn.prepare(query).unwrap(); // Execute a simple query to check if the table exists
-
+        let mut stmt = conn.prepare(query).unwrap();
         let result = stmt
             .query_row([], |row| Ok(row.get::<_, String>(0)))
             .unwrap();
 
-        assert_eq!(result.unwrap(), "extended_item_data"); // Assert that the table name matches
+        assert_eq!(result.unwrap(), "extended_item_data");
 
-        // 4. Clean up (optional) - Delete the test database after the tests are done:
         drop(stmt);
+
+        drop(conn);
+        std::fs::remove_file(db_path).unwrap();
+    }
+
+    #[test]
+
+    fn test_extended_item_data_table_columns() {
+        let db_path = PathBuf::from("test.db");
+        let conn = SqlLiteConnection::open(db_path.clone()).unwrap();
+
+        {
+            conn.create_extended_item_data_table().unwrap();
+
+            let mut names = Vec::new();
+            let query = "PRAGMA table_info(extended_item_data)";
+            let mut stmt = conn.prepare(query).unwrap();
+            let rows = stmt.query_map([], |row| row.get::<_, String>(1)).unwrap();
+
+            for row in rows {
+                names.push(row);
+            }
+
+            assert_eq!(names.len(), 17);
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "id".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "type_id".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "timestamp".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "type_volume".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "type_name".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "jita_trade_data".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "abroad_trade_data".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "jita_buy_with_tax".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "abroad_stocked_ratio".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "shipping_price".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "abroad_sell_taxed".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "abroad_avg_daily".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "profit_jita_buy_per_unit".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "profit_jita_buy_daily".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "margin_jita_buy".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "money_freeze_buy".to_owned()));
+            assert!(names
+                .iter()
+                .any(|r| *r.as_ref().unwrap() == "freeze_rate".to_owned()));
+        }
 
         drop(conn);
         std::fs::remove_file(db_path).unwrap();
