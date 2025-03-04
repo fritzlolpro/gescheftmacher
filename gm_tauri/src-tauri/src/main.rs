@@ -1,6 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
+#![allow(unused)]
 use serde::{Deserialize, Serialize};
 use serde_xml_rs::from_str;
 
@@ -8,13 +8,15 @@ use error_chain::error_chain;
 use struct_field_names_as_array::FieldNamesAsSlice;
 use tokio;
 
+use chrono;
+
 mod static_data;
 use static_data::static_data::TradePile;
 mod datagetter;
 mod goonmetrics;
 use datagetter::datagetter::{
-    get_item_data_from_api, get_item_data_from_db,
-    merge_trade_data, ItemData, TradeData,
+    get_item_data_from_api, get_item_data_from_db, merge_trade_data, store_extended_item_data,
+    ItemData, TradeData,
 };
 
 use numfmt::Formatter;
@@ -40,6 +42,7 @@ error_chain! {
 pub struct ExtendedItemData {
     type_id: i32,
     type_volume: f32,
+    timestamp: i64,
     type_name: String,
     jita_trade_data: TradeData,
     jita_buy_with_tax: f64,
@@ -116,9 +119,12 @@ impl ExtendedItemData {
         let money_freeze_buy = data.get_money_freeze_buy();
         let freeze_rate = data.get_freeze_rate();
 
+        let dt = chrono::Utc::now();
+
         // TODO: Add filters to display only good stuff
         ExtendedItemData {
             type_id: id,
+            timestamp: dt.timestamp(),
             type_volume: volume,
             type_name: name,
             jita_trade_data: jtd,
@@ -176,9 +182,8 @@ async fn main() -> Result<()> {
     //TODO: Save data to some db to avoid crushin API
     println!("EXTENDED DATA! \n {:?}", extended_data_collection);
 
-    
+    store_extended_item_data();
     run(extended_data_collection.clone());
-   
 
     Ok(())
 }

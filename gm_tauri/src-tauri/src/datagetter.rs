@@ -1,9 +1,10 @@
+#![allow(unused)]
 pub mod datagetter {
     use crate::from_str;
     use crate::goonmetrics::goonmetrics::*;
     use error_chain::error_chain;
     use reqwest;
-    use rusqlite::{Connection as SQL_Connection, Result as SQL_Result};
+    use rusqlite::{Connection as SQL_Connection, Result as SQL_Result, Statement};
     use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
     use std::sync::mpsc;
@@ -45,9 +46,12 @@ pub mod datagetter {
         fn open(db_path: PathBuf) -> SQL_Result<Self>
         where
             Self: Sized;
+
+        fn prepare(&self, sql: &str) -> SQL_Result<Statement<'_>>;
         fn get_stored_type_data(&self, name: &str) -> SQL_Result<ItemDataFromDb>;
         fn get_stored_type_volume_packed(&self, type_id: i32) -> SQL_Result<f32>;
         fn get_tradable_item_names(&self) -> SQL_Result<Vec<String>>;
+        fn create_extended_item_data_table(&self) -> SQL_Result<()>;
     }
 
     pub struct SqlLiteConnection(SQL_Connection);
@@ -56,6 +60,12 @@ pub mod datagetter {
         fn open(db_path: PathBuf) -> SQL_Result<Self> {
             let conn = SQL_Connection::open(db_path)?;
             Ok(SqlLiteConnection(conn))
+        }
+
+        fn prepare(&self, sql: &str) -> SQL_Result<Statement<'_>> {
+            let mut res = self.0.prepare(sql)?;
+
+            Ok(res)
         }
 
         fn get_stored_type_data(&self, type_name: &str) -> SQL_Result<ItemDataFromDb> {
@@ -76,6 +86,20 @@ pub mod datagetter {
             };
 
             Ok(result)
+        }
+
+        fn create_extended_item_data_table(&self) -> SQL_Result<()> {
+            self.0.execute(
+                "CREATE TABLE IF NOT EXISTS extended_item_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type_id INTEGER NOT NULL, 
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, 
+                    jita_trade_data JSON NOT NULL,
+                    abroad_trade_data JSON NOT NULL)",
+                [],
+            )?;
+
+            Ok(())
         }
 
         fn get_stored_type_volume_packed(&self, type_id: i32) -> SQL_Result<f32> {
@@ -116,6 +140,13 @@ pub mod datagetter {
         }
     }
 
+    pub fn store_extended_item_data() {
+        let db_path = PathBuf::from("src/gescheftmacher.db");
+        let connection = SqlLiteConnection::open(db_path.clone()).unwrap();
+
+        println!("gm db path! {:?}", db_path);
+        connection.create_extended_item_data_table();
+    }
 
     pub fn get_item_data_from_db(names: Vec<String>) -> Vec<ItemData> {
         let db_path = PathBuf::from("src/eve.db");
@@ -437,4 +468,31 @@ mod tests {
         assert_eq!(trit_volume, volume)
     }
 
+    #[test]
+    fn test_create_extended_item_data_table() {
+        let db_path = PathBuf::from("test.db"); // Use a unique file for testing
+
+        // 1. Create a connection to the database (it will be created if it doesn't exist)
+        let mut conn = SqlLiteConnection::open(db_path.clone()).unwrap();
+
+        // 2. Execute the `create_extended_item_data_table` function
+        conn.create_extended_item_data_table().unwrap(); // Assuming this function returns a Result<(), rusqlite::Error>
+
+        // 3. Check if the table exists in the database
+        let query =
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='extended_item_data'";
+        let mut stmt = conn.prepare(query).unwrap(); // Execute a simple query to check if the table exists
+
+        let result = stmt
+            .query_row([], |row| Ok(row.get::<_, String>(0)))
+            .unwrap();
+
+        assert_eq!(result.unwrap(), "extended_item_data"); // Assert that the table name matches
+
+        // 4. Clean up (optional) - Delete the test database after the tests are done:
+        drop(stmt);
+
+        drop(conn);
+        std::fs::remove_file(db_path).unwrap();
+    }
 }
