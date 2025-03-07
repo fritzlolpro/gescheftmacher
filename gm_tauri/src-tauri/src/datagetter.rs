@@ -4,7 +4,7 @@ pub mod datagetter {
     use crate::goonmetrics::goonmetrics::*;
     use error_chain::error_chain;
     use reqwest;
-    use rusqlite::{Connection as SQL_Connection, Result as SQL_Result, Statement};
+    use rusqlite::{params, Connection as SQL_Connection, Result as SQL_Result, Statement};
     use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
     use std::sync::mpsc;
@@ -16,6 +16,28 @@ pub mod datagetter {
             Io(std::io::Error);
             HttpRequest(reqwest::Error);
         }
+    }
+
+    const MAX_GOONMETRICS_ID_QUANTITY: usize = 49;
+
+    #[derive(Debug, PartialEq, Clone, FieldNamesAsSlice, Deserialize, Serialize)]
+    pub struct ExtendedItemData {
+        pub type_id: i32,
+        pub type_volume: f32,
+        pub timestamp: i64,
+        pub type_name: String,
+        pub jita_trade_data: TradeData,
+        pub jita_buy_with_tax: f64,
+        pub abroad_trade_data: TradeData,
+        pub abroad_stocked_ratio: f64,
+        pub shipping_price: f64,
+        pub abroad_sell_taxed: f64,
+        pub abroad_avg_daily: f64,
+        pub profit_jita_buy_per_unit: f64,
+        pub profit_jita_buy_daily: f64,
+        pub margin_jita_buy: f64,
+        pub money_freeze_buy: f64,
+        pub freeze_rate: f64,
     }
 
     #[derive(Debug, PartialEq)]
@@ -52,6 +74,7 @@ pub mod datagetter {
         fn get_stored_type_volume_packed(&self, type_id: i32) -> SQL_Result<f32>;
         fn get_tradable_item_names(&self) -> SQL_Result<Vec<String>>;
         fn create_extended_item_data_table(&self) -> SQL_Result<()>;
+        fn store_extended_item_data(&self, extended_item_data: ExtendedItemData) -> SQL_Result<()>;
     }
 
     pub struct SqlLiteConnection(SQL_Connection);
@@ -114,6 +137,39 @@ pub mod datagetter {
             Ok(())
         }
 
+        fn store_extended_item_data(&self, extended_item_data: ExtendedItemData) -> SQL_Result<()> {
+            let mut stmt = self.0.prepare(
+                "INSERT INTO extended_item_data (type_id, timestamp, type_volume, type_name, jita_trade_data, abroad_trade_data, jita_buy_with_tax, abroad_stocked_ratio, shipping_price, abroad_sell_taxed, abroad_avg_daily, profit_jita_buy_per_unit, profit_jita_buy_daily, margin_jita_buy, money_freeze_buy, freeze_rate)
+                VALUES (:type_id, :timestamp, :type_volume, :type_name, :jita_trade_data, :abroad_trade_data, :jita_buy_with_tax, :abroad_stocked_ratio, :shipping_price, :abroad_sell_taxed, :abroad_avg_daily, :profit_jita_buy_per_unit, :profit_jita_buy_daily, :margin_jita_buy, :money_freeze_buy, :freeze_rate)",
+            )?;
+
+            let jtd = serde_json::to_string(&extended_item_data.jita_trade_data).unwrap();
+            let atd = serde_json::to_string(&extended_item_data.abroad_trade_data).unwrap();
+
+            let params = rusqlite::params![
+                extended_item_data.type_id,
+                extended_item_data.timestamp,
+                extended_item_data.type_volume,
+                extended_item_data.type_name,
+                jtd,
+                atd,
+                extended_item_data.jita_buy_with_tax,
+                extended_item_data.abroad_stocked_ratio,
+                extended_item_data.shipping_price,
+                extended_item_data.abroad_sell_taxed,
+                extended_item_data.abroad_avg_daily,
+                extended_item_data.profit_jita_buy_per_unit,
+                extended_item_data.profit_jita_buy_daily,
+                extended_item_data.margin_jita_buy,
+                extended_item_data.money_freeze_buy,
+                extended_item_data.freeze_rate,
+            ];
+
+            stmt.execute(params)?;
+
+            Ok(())
+        }
+
         fn get_stored_type_volume_packed(&self, type_id: i32) -> SQL_Result<f32> {
             let mut stmt = self.0.prepare(
                 "
@@ -152,12 +208,12 @@ pub mod datagetter {
         }
     }
 
-    pub fn store_extended_item_data() {
+    pub fn create_table_and_store_data(extended_item_data: ExtendedItemData) {
         let db_path = PathBuf::from("src/gescheftmacher.db");
         let connection = SqlLiteConnection::open(db_path.clone()).unwrap();
 
-        println!("gm db path! {:?}", db_path);
         connection.create_extended_item_data_table();
+        connection.store_extended_item_data(extended_item_data);
     }
 
     pub fn get_item_data_from_db(names: Vec<String>) -> Vec<ItemData> {
@@ -191,8 +247,7 @@ pub mod datagetter {
             .collect()
     }
 
-    const MAX_GOONMETRICS_ID_QUANTITY: usize = 99;
-
+   
     pub async fn get_item_data_from_api(
         station_id: &str,
         item_ids: &Vec<i32>,

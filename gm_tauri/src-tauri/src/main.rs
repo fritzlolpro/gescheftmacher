@@ -15,8 +15,8 @@ use static_data::static_data::TradePile;
 mod datagetter;
 mod goonmetrics;
 use datagetter::datagetter::{
-    get_item_data_from_api, get_item_data_from_db, merge_trade_data, store_extended_item_data,
-    ItemData, TradeData,
+    create_table_and_store_data, get_item_data_from_api, get_item_data_from_db, merge_trade_data,
+    ExtendedItemData, ItemData, TradeData,
 };
 
 use numfmt::Formatter;
@@ -38,26 +38,6 @@ error_chain! {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, FieldNamesAsSlice, Deserialize, Serialize)]
-pub struct ExtendedItemData {
-    type_id: i32,
-    type_volume: f32,
-    timestamp: i64,
-    type_name: String,
-    jita_trade_data: TradeData,
-    jita_buy_with_tax: f64,
-    abroad_trade_data: TradeData,
-    abroad_stocked_ratio: f64,
-    shipping_price: f64,
-    abroad_sell_taxed: f64,
-    abroad_avg_daily: f64,
-    profit_jita_buy_per_unit: f64,
-    profit_jita_buy_daily: f64,
-    margin_jita_buy: f64,
-    money_freeze_buy: f64,
-    freeze_rate: f64,
-}
-
 impl ItemData {
     pub fn get_shipping_price(&self) -> f64 {
         let shipping_price = &self.type_volume * DELIVERY_PRICE_PER_CUBOMETR;
@@ -76,33 +56,48 @@ impl ItemData {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
         return abtd.sell_min - abtd.sell_min * ABROAD_TAX_VALUE;
     }
+
     pub fn get_abroad_avg_daily(&self) -> f64 {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
+
         let abstocked = &self.get_abroad_stocked_ratio();
+        if *abstocked == 0.0 {
+            return 0.0; 
+        }
+
         return abtd.weekly_movement / 7.0 / f64::sqrt(*abstocked);
     }
+
     pub fn get_profit_jita_buy_per_unit(&self) -> f64 {
         return &self.get_abroad_sell_taxed()
             - &self.get_jita_buy_price_with_tax()
             - &self.get_shipping_price();
     }
+
     pub fn get_profit_jita_buy_daily(&self) -> f64 {
         return &self.get_abroad_avg_daily() * &self.get_profit_jita_buy_per_unit();
     }
+
     pub fn get_margin_jita_buy(&self) -> f64 {
         return &self.get_profit_jita_buy_per_unit()
             / (&self.get_jita_buy_price_with_tax() + &self.get_shipping_price());
     }
+
     pub fn get_money_freeze_buy(&self) -> f64 {
         return &self.get_abroad_avg_daily() * &self.get_jita_buy_price_with_tax();
     }
+
     pub fn get_freeze_rate(&self) -> f64 {
-        return &self.get_profit_jita_buy_daily() / &self.get_money_freeze_buy();
+        let mfb = &self.get_money_freeze_buy();
+        if *mfb == 0.0 {
+            return 0.0; 
+        }
+        return &self.get_profit_jita_buy_daily() / mfb;
     }
 }
 
 impl ExtendedItemData {
-    fn new(data: ItemData) -> Self {
+    fn new(data: ItemData, timestamp: i64) -> Self {
         let shipping_price = data.get_shipping_price();
         let jtd = data.jita_trade_data.clone().unwrap();
         let atd = data.abroad_trade_data.clone().unwrap();
@@ -119,18 +114,16 @@ impl ExtendedItemData {
         let money_freeze_buy = data.get_money_freeze_buy();
         let freeze_rate = data.get_freeze_rate();
 
-        let dt = chrono::Utc::now();
-
         // TODO: Add filters to display only good stuff
         ExtendedItemData {
             type_id: id,
-            timestamp: dt.timestamp(),
+            timestamp: timestamp,
             type_volume: volume,
             type_name: name,
             jita_trade_data: jtd,
             jita_buy_with_tax: jtb_with_tax,
             abroad_trade_data: atd,
-            abroad_stocked_ratio: abroad_stocked_ratio,
+            abroad_stocked_ratio,
             shipping_price: shipping_price,
             abroad_sell_taxed: abroad_sell_taxed,
             abroad_avg_daily: abroad_avg_daily,
@@ -146,7 +139,10 @@ impl ExtendedItemData {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-    let names: Vec<String> = vec!["Hulk"].into_iter().map(|s| s.to_owned()).collect();
+    let names: Vec<String> = vec!["Hulk", "Tritanium", "Zainou 'Gypsy' CPU Management EE-602"]
+        .into_iter()
+        .map(|s| s.to_owned())
+        .collect();
     // let names: Vec<String> = get_tradable_item_names_from_db();
     let pile = TradePile::new();
     // let names = pile.items;
@@ -173,16 +169,18 @@ async fn main() -> Result<()> {
     );
     println!("MERGED:\n{:?}", merged_trade_data);
 
+    let current_time = chrono::Utc::now().timestamp();
+
     let mut extended_data_collection = vec![];
     for ele in merged_trade_data {
-        let extended_item_data = ExtendedItemData::new(ele.to_owned());
+        let extended_item_data = ExtendedItemData::new(ele.to_owned(), current_time);
+        create_table_and_store_data(extended_item_data.clone());
         extended_data_collection.push(extended_item_data);
     }
 
     //TODO: Save data to some db to avoid crushin API
     println!("EXTENDED DATA! \n {:?}", extended_data_collection);
 
-    store_extended_item_data();
     run(extended_data_collection.clone());
 
     Ok(())
