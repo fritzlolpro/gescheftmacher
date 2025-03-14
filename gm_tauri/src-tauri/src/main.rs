@@ -10,6 +10,9 @@ use tokio;
 
 use chrono;
 
+#[cfg(test)]
+mod datagetter_tests;
+
 mod static_data;
 use static_data::static_data::TradePile;
 mod datagetter;
