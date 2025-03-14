@@ -2,9 +2,36 @@
 import { ref, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
+interface TradeData {
+  updated: string;
+  weekly_movement: number;
+  buy_max: number;
+  buy_listed: number;
+  sell_min: number;
+  sell_listed: number;
+}
+
+interface ExtendedItemData {
+  type_id: number;
+  type_volume: number;
+  timestamp: number;
+  type_name: string;
+  jita_trade_data: TradeData;
+  jita_buy_with_tax: number;
+  abroad_trade_data: TradeData;
+  abroad_stocked_ratio: number;
+  shipping_price: number;
+  abroad_sell_taxed: number;
+  abroad_avg_daily: number;
+  profit_jita_buy_per_unit: number;
+  profit_jita_buy_daily: number;
+  margin_jita_buy: number;
+  money_freeze_buy: number;
+  freeze_rate: number;
+}
 
 const search = ref("")
-const headers = ref([
+const headers = ref<{ title: string; align: "center" | "start" | "end"; value?: string; children?: { title: string; align: "center" | "start" | "end"; value: string; }[] }[]>([
   // Basic information
   { title: 'Id', align: 'center', value: 'type_id' },
   { title: 'Volume', align: 'center', value: 'type_volume' },
@@ -128,11 +155,8 @@ const headers = ref([
 
 ]);
 
-const items = ref([]);
+const items = ref<ExtendedItemData[]>([]);
 
-function formatNumberIntoString(number: number) {
-  return new Intl.NumberFormat("RU-ru").format(number) 
-}
 
 function truncateDecimal(number: number) {
   return Number(number.toFixed(2));
@@ -146,7 +170,7 @@ async function get_data() {
   items.value.forEach(item => {
     for (const [key, value] of Object.entries(item)) {
       if (key === 'margin_jita_buy') {
-        item[key] = truncateDecimal(value * 100)
+        item[key] = truncateDecimal(value as number * 100)
       }
     }
 
@@ -177,6 +201,6 @@ const minMargin = 0
       </template>
     </v-slider>
     <v-data-table :sort-by="[{ key: 'margin_jita_buy', order: 'desc' }, { key: 'freeze_rate', order: 'desc' }]"
-      multi-sort :search="search" density="compact" :headers="headers" :items="filteredItems"></v-data-table>
+      multi-sort :search="search" density="compact" :headers="headers" :items="items"></v-data-table>
   </main>
 </template>

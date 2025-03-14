@@ -9,6 +9,7 @@ pub mod datagetter {
     use std::path::PathBuf;
     use std::sync::mpsc;
     use struct_field_names_as_array::FieldNamesAsSlice;
+    
     use tokio::task;
 
     error_chain! {
@@ -69,26 +70,45 @@ pub mod datagetter {
         where
             Self: Sized;
 
+        fn open_in_memory() -> SQL_Result<Self>
+        where
+            Self: Sized;
+
         fn prepare(&self, sql: &str) -> SQL_Result<Statement<'_>>;
+        fn execute_no_params(&self, sql: &str) -> SQL_Result<usize>;
         fn get_stored_type_data(&self, name: &str) -> SQL_Result<ItemDataFromDb>;
         fn get_stored_type_volume_packed(&self, type_id: i32) -> SQL_Result<f32>;
         fn get_tradable_item_names(&self) -> SQL_Result<Vec<String>>;
         fn create_extended_item_data_table(&self) -> SQL_Result<()>;
         fn store_extended_item_data(&self, extended_item_data: ExtendedItemData) -> SQL_Result<()>;
+        fn get_stored_extended_item_data(
+            &self,
+            extended_item_id: i32,
+        ) -> SQL_Result<Vec<ExtendedItemData>>;
     }
 
     pub struct SqlLiteConnection(SQL_Connection);
 
     impl DatabaseConnection for SqlLiteConnection {
         fn open(db_path: PathBuf) -> SQL_Result<Self> {
-            let conn = SQL_Connection::open(db_path)?;
-            Ok(SqlLiteConnection(conn))
+            Ok(SqlLiteConnection(SQL_Connection::open(db_path)?))
+        }
+
+        fn open_in_memory() -> SQL_Result<Self>
+        where
+            Self: Sized,
+        {
+            Ok(SqlLiteConnection(SQL_Connection::open_in_memory()?))
         }
 
         fn prepare(&self, sql: &str) -> SQL_Result<Statement<'_>> {
             let mut res = self.0.prepare(sql)?;
 
             Ok(res)
+        }
+
+        fn execute_no_params(&self, sql: &str) -> SQL_Result<usize> {
+            self.0.execute(sql, [])
         }
 
         fn get_stored_type_data(&self, type_name: &str) -> SQL_Result<ItemDataFromDb> {
@@ -170,6 +190,61 @@ pub mod datagetter {
             Ok(())
         }
 
+        fn get_stored_extended_item_data(&self, type_id: i32) -> SQL_Result<Vec<ExtendedItemData>> {
+            let mut stmt = self
+                .0
+                .prepare("SELECT * FROM extended_item_data WHERE type_id = ?")?;
+
+            let mut rows = stmt.query(params![type_id])?;
+
+            let mut result: Vec<ExtendedItemData> = Vec::new();
+
+            while let Some(row) = rows.next()? {
+                
+                let type_id = row.get(1)?;
+                let timestamp = row.get(2)?;
+                let type_volume = row.get(3)?;
+                let type_name = row.get(4)?;
+                let jita_trade_data: String = row.get(5)?;
+                let abroad_trade_data: String = row.get(6)?;
+                let jita_buy_with_tax = row.get(7)?;
+                let abroad_stocked_ratio = row.get(8)?;
+                let shipping_price = row.get(9)?;
+                let abroad_sell_taxed = row.get(10)?;
+                let abroad_avg_daily = row.get(11)?;
+                let profit_jita_buy_per_unit = row.get(12)?;
+                let profit_jita_buy_daily = row.get(13)?;
+                let margin_jita_buy = row.get(14)?;
+                let money_freeze_buy = row.get(15)?;
+                let freeze_rate = row.get(16)?;
+
+                let jtd: TradeData = serde_json::from_str(&jita_trade_data).unwrap();
+                let atd: TradeData = serde_json::from_str(&abroad_trade_data).unwrap();
+
+                let item_data = ExtendedItemData {
+                    type_id,
+                    timestamp,
+                    type_volume,
+                    type_name,
+                    jita_trade_data: jtd,
+                    abroad_trade_data: atd,
+                    jita_buy_with_tax,
+                    abroad_stocked_ratio,
+                    shipping_price,
+                    abroad_sell_taxed,
+                    abroad_avg_daily,
+                    profit_jita_buy_per_unit,
+                    profit_jita_buy_daily,
+                    margin_jita_buy,
+                    money_freeze_buy,
+                    freeze_rate,
+                };
+                result.push(item_data);
+            }
+
+            Ok(result)
+        }
+
         fn get_stored_type_volume_packed(&self, type_id: i32) -> SQL_Result<f32> {
             let mut stmt = self.0.prepare(
                 "
@@ -210,10 +285,23 @@ pub mod datagetter {
 
     pub fn create_table_and_store_data(extended_item_data: ExtendedItemData) {
         let db_path = PathBuf::from("src/gescheftmacher.db");
-        let connection = SqlLiteConnection::open(db_path.clone()).unwrap();
+        let connection = SqlLiteConnection::open(db_path).unwrap();
 
         connection.create_extended_item_data_table();
         connection.store_extended_item_data(extended_item_data);
+    }
+
+    pub fn get_stored_item_history(item_ids: &Vec<i32>) -> Vec<ExtendedItemData> {
+        let db_path = PathBuf::from("src/gesheftmacher.db");
+        let connection = SqlLiteConnection::open(db_path).unwrap();
+        let mut result = vec![];
+        for id in item_ids {
+            let stored = connection.get_stored_extended_item_data(*id).unwrap();
+            for item in stored {
+                result.push(item);
+            }
+        }
+        return result;
     }
 
     pub fn get_item_data_from_db(names: Vec<String>) -> Vec<ItemData> {
@@ -247,7 +335,6 @@ pub mod datagetter {
             .collect()
     }
 
-   
     pub async fn get_item_data_from_api(
         station_id: &str,
         item_ids: &Vec<i32>,
