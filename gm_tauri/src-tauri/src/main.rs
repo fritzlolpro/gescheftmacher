@@ -1,6 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-#![allow(unused)]
+// #![allow(unused)]
 use serde::{Deserialize, Serialize};
 use serde_xml_rs::from_str;
 
@@ -18,8 +18,8 @@ use static_data::static_data::TradePile;
 mod datagetter;
 mod goonmetrics;
 use datagetter::datagetter::{
-    create_table_and_store_data, get_item_data_from_api, get_item_data_from_db, merge_trade_data,
-    ExtendedItemData, ItemData, TradeData,
+    create_table_and_store_data, get_item_data_from_api, get_item_data_from_db,
+    get_stored_items_history, merge_trade_data, ExtendedItemData, ItemData, TradeData,
 };
 
 use numfmt::Formatter;
@@ -33,6 +33,9 @@ const FREEZE_RATE_THRESHOLD: f32 = 0.1;
 const MARKET_RATE_THRESHOLD: i32 = 1;
 const DAILY_VOL_THRESHOLD: i64 = 10;
 const ABROAD_TAX_VALUE: f64 = 0.056;
+
+const JITA_ID: &str = "60003760";
+const GOON_KEEP_ID: &str = "1030049082711";
 
 error_chain! {
     foreign_links {
@@ -65,7 +68,7 @@ impl ItemData {
 
         let abstocked = &self.get_abroad_stocked_ratio();
         if *abstocked == 0.0 {
-            return 0.0; 
+            return 0.0;
         }
 
         return abtd.weekly_movement / 7.0 / f64::sqrt(*abstocked);
@@ -93,7 +96,7 @@ impl ItemData {
     pub fn get_freeze_rate(&self) -> f64 {
         let mfb = &self.get_money_freeze_buy();
         if *mfb == 0.0 {
-            return 0.0; 
+            return 0.0;
         }
         return &self.get_profit_jita_buy_daily() / mfb;
     }
@@ -156,33 +159,38 @@ async fn main() -> Result<()> {
     let item_ids: &Vec<i32> = &items_data.into_iter().map(|item| item.type_id).collect();
     println!("IDIS:\n{:?}", item_ids);
 
-    let jita_id = "60003760";
-    let goon_keep_id = "1030049082711";
-
-    let jita_trade_data = get_item_data_from_api(&jita_id, &item_ids).await;
-    println!("JITA TRADE DATA:\n{:?}", jita_trade_data);
-
-    let goon_trade_data = get_item_data_from_api(&goon_keep_id, &item_ids).await;
-    println!("GOON TRADE DATA:\n{:?}", goon_trade_data);
-
-    let merged_trade_data = merge_trade_data(
-        &items_data,
-        &jita_trade_data.expect("hui"),
-        &goon_trade_data.expect("hui"),
-    );
-    println!("MERGED:\n{:?}", merged_trade_data);
-
     let current_time = chrono::Utc::now().timestamp();
 
-    let mut extended_data_collection = vec![];
-    for ele in merged_trade_data {
-        let extended_item_data = ExtendedItemData::new(ele.to_owned(), current_time);
-        create_table_and_store_data(extended_item_data.clone());
-        extended_data_collection.push(extended_item_data);
-    }
+    let items_history_data = get_stored_items_history(item_ids);
+    // if some here cuz db could be not here
 
-    //TODO: Save data to some db to avoid crushin API
-    println!("EXTENDED DATA! \n {:?}", extended_data_collection);
+    let should_fetch_data = items_history_data.all_ids_present_and_recent(item_ids, 10);
+
+    let mut extended_data_collection: Vec<ExtendedItemData> = vec![];
+
+    if !should_fetch_data {
+        println!("All IDs are present and recent. Skipping API request.");
+        extended_data_collection = items_history_data.get_most_recent_item_data()
+    } else {
+        println!("Some IDs are missing or not recent. Fetching data from API.");
+        let jita_trade_data = get_item_data_from_api(&JITA_ID, &item_ids).await;
+        println!("JITA TRADE DATA:\n{:?}", jita_trade_data);
+
+        let goon_trade_data = get_item_data_from_api(&GOON_KEEP_ID, &item_ids).await;
+        println!("GOON TRADE DATA:\n{:?}", goon_trade_data);
+
+        let merged_trade_data = merge_trade_data(
+            &items_data,
+            &jita_trade_data.expect("hui"),
+            &goon_trade_data.expect("hui"),
+        );
+
+        for ele in merged_trade_data {
+            let extended_item_data = ExtendedItemData::new(ele.to_owned(), current_time);
+            create_table_and_store_data(extended_item_data.clone());
+            extended_data_collection.push(extended_item_data);
+        }
+    }
 
     run(extended_data_collection.clone());
 

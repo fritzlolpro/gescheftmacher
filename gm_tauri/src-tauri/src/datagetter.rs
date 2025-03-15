@@ -1,7 +1,8 @@
-#![allow(unused)]
+// #![allow(unused)]
 pub mod datagetter {
     use crate::from_str;
     use crate::goonmetrics::goonmetrics::*;
+    use chrono::{Duration, Utc};
     use error_chain::error_chain;
     use reqwest;
     use rusqlite::{params, Connection as SQL_Connection, Result as SQL_Result, Statement};
@@ -9,7 +10,7 @@ pub mod datagetter {
     use std::path::PathBuf;
     use std::sync::mpsc;
     use struct_field_names_as_array::FieldNamesAsSlice;
-    
+
     use tokio::task;
 
     error_chain! {
@@ -54,6 +55,62 @@ pub mod datagetter {
         pub buy_listed: i64,
         pub sell_min: f64,
         pub sell_listed: i64,
+    }
+
+    use std::collections::HashMap;
+
+    pub struct ItemHistory {
+        pub data: HashMap<i32, Vec<ExtendedItemData>>,
+    }
+
+    impl ItemHistory {
+        pub fn new() -> Self {
+            ItemHistory {
+                data: HashMap::new(),
+            }
+        }
+
+        pub fn add_item_data(&mut self, id: i32, item_data: ExtendedItemData) {
+            self.data.entry(id).or_insert_with(Vec::new).push(item_data);
+        }
+
+        pub fn add_item_data_vec(&mut self, id: i32, item_data_vec: Vec<ExtendedItemData>) {
+            self.data
+                .entry(id)
+                .or_insert_with(Vec::new)
+                .extend(item_data_vec);
+        }
+
+        pub fn get_item_data(&self, id: i32) -> Option<&Vec<ExtendedItemData>> {
+            self.data.get(&id)
+        }
+
+        pub fn all_ids_present_and_recent(&self, ids: &[i32], max_age_minutes: i64) -> bool {
+            let now = Utc::now().timestamp();
+            let max_age = Duration::minutes(max_age_minutes);
+
+            for &id in ids {
+                if let Some(data_vec) = self.get_item_data(id) {
+                    if let Some(max_timestamp) = data_vec.iter().map(|data| data.timestamp).max() {
+                        if now - max_timestamp > max_age.num_seconds() {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            true
+        }
+
+        pub fn get_most_recent_item_data(&self) -> Vec<ExtendedItemData> {
+            self.data
+                .values()
+                .filter_map(|data_vec| data_vec.iter().max_by_key(|data| data.timestamp).cloned())
+                .collect()
+        }
     }
 
     #[derive(Debug, PartialEq, Clone)]
@@ -200,7 +257,6 @@ pub mod datagetter {
             let mut result: Vec<ExtendedItemData> = Vec::new();
 
             while let Some(row) = rows.next()? {
-                
                 let type_id = row.get(1)?;
                 let timestamp = row.get(2)?;
                 let type_volume = row.get(3)?;
@@ -287,21 +343,37 @@ pub mod datagetter {
         let db_path = PathBuf::from("src/gescheftmacher.db");
         let connection = SqlLiteConnection::open(db_path).unwrap();
 
-        connection.create_extended_item_data_table();
-        connection.store_extended_item_data(extended_item_data);
+        if let Err(e) = connection.create_extended_item_data_table() {
+            eprintln!("Error creating table: {:?}", e);
+        }
+        if let Err(e) = connection.store_extended_item_data(extended_item_data) {
+            eprintln!("Error storing data: {:?}", e);
+        }
     }
-
-    pub fn get_stored_item_history(item_ids: &Vec<i32>) -> Vec<ExtendedItemData> {
+    
+    pub fn get_stored_items_history(item_ids: &Vec<i32>) -> ItemHistory {
+        let mut item_history = ItemHistory::new();
         let db_path = PathBuf::from("src/gesheftmacher.db");
-        let connection = SqlLiteConnection::open(db_path).unwrap();
-        let mut result = vec![];
-        for id in item_ids {
-            let stored = connection.get_stored_extended_item_data(*id).unwrap();
-            for item in stored {
-                result.push(item);
+
+        match SqlLiteConnection::open(db_path) {
+            Ok(connection) => {
+                for id in item_ids {
+                    match connection.get_stored_extended_item_data(*id) {
+                        Ok(stored) => {
+                            item_history.add_item_data_vec(*id, stored);
+                        }
+                        Err(e) => {
+                            eprintln!("Error retrieving data for ID {}: {:?}", id, e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Error opening database: {:?}", e);
             }
         }
-        return result;
+
+        item_history
     }
 
     pub fn get_item_data_from_db(names: Vec<String>) -> Vec<ItemData> {
