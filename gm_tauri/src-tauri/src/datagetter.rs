@@ -92,6 +92,9 @@ pub mod datagetter {
             for &id in ids {
                 if let Some(data_vec) = self.get_item_data(id) {
                     if let Some(max_timestamp) = data_vec.iter().map(|data| data.timestamp).max() {
+                        println!("max_timestamp: {}", max_timestamp);
+                        println!("now: {}", now);
+                        println!("max_age: {}", max_age.num_seconds());
                         if now - max_timestamp > max_age.num_seconds() {
                             return false;
                         }
@@ -144,6 +147,7 @@ pub mod datagetter {
         ) -> SQL_Result<Vec<ExtendedItemData>>;
     }
 
+    #[derive(Debug)]
     pub struct SqlLiteConnection(SQL_Connection);
 
     impl DatabaseConnection for SqlLiteConnection {
@@ -252,6 +256,8 @@ pub mod datagetter {
                 .0
                 .prepare("SELECT * FROM extended_item_data WHERE type_id = ?")?;
 
+            println!("+++++self: {:?}", self.0);
+            println!("trying to get data for type_id: {}", type_id);
             let mut rows = stmt.query(params![type_id])?;
 
             let mut result: Vec<ExtendedItemData> = Vec::new();
@@ -350,16 +356,25 @@ pub mod datagetter {
             eprintln!("Error storing data: {:?}", e);
         }
     }
-    
+
     pub fn get_stored_items_history(item_ids: &Vec<i32>) -> ItemHistory {
         let mut item_history = ItemHistory::new();
-        let db_path = PathBuf::from("src/gesheftmacher.db");
+        let db_path = PathBuf::from("src/gescheftmacher.db");
 
         match SqlLiteConnection::open(db_path) {
             Ok(connection) => {
+                // Ensure the table exists before querying
+                if let Err(e) = connection.create_extended_item_data_table() {
+                    eprintln!("Error creating table: {:?}", e);
+                }
+
+                println!("Database connection established.");
+
                 for id in item_ids {
+                    println!("Fetching data for ID: {}", id);
                     match connection.get_stored_extended_item_data(*id) {
                         Ok(stored) => {
+                            println!("Data retrieved for ID: {}", id);
                             item_history.add_item_data_vec(*id, stored);
                         }
                         Err(e) => {

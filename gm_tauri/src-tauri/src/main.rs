@@ -34,6 +34,8 @@ const MARKET_RATE_THRESHOLD: i32 = 1;
 const DAILY_VOL_THRESHOLD: i64 = 10;
 const ABROAD_TAX_VALUE: f64 = 0.056;
 
+const CACHE_EXPIRY_DURATION_MINUTES: i64 = 120;
+
 const JITA_ID: &str = "60003760";
 const GOON_KEEP_ID: &str = "1030049082711";
 
@@ -164,11 +166,12 @@ async fn main() -> Result<()> {
     let items_history_data = get_stored_items_history(item_ids);
     // if some here cuz db could be not here
 
-    let should_fetch_data = items_history_data.all_ids_present_and_recent(item_ids, 10);
+    
+    let has_fresh_chached_data = items_history_data.all_ids_present_and_recent(item_ids, CACHE_EXPIRY_DURATION_MINUTES);
 
     let mut extended_data_collection: Vec<ExtendedItemData> = vec![];
 
-    if !should_fetch_data {
+    if has_fresh_chached_data {
         println!("All IDs are present and recent. Skipping API request.");
         extended_data_collection = items_history_data.get_most_recent_item_data()
     } else {
