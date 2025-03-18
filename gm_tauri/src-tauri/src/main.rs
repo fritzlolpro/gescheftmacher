@@ -37,7 +37,7 @@ const ABROAD_TAX_VALUE: f64 = 0.056;
 const CACHE_EXPIRY_DURATION_MINUTES: i64 = 120;
 
 const JITA_ID: &str = "60003760";
-const GOON_KEEP_ID: &str = "1030049082711";
+const GOON_KEEP_ID: &str = "1046664001931";
 
 error_chain! {
     foreign_links {
@@ -147,13 +147,13 @@ impl ExtendedItemData {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-    let names: Vec<String> = vec!["Hulk", "Tritanium", "Zainou 'Gypsy' CPU Management EE-602"]
-        .into_iter()
-        .map(|s| s.to_owned())
-        .collect();
+    // let names: Vec<String> = vec!["Hulk", "Tritanium", "Zainou 'Gypsy' CPU Management EE-602"]
+        // .into_iter()
+        // .map(|s| s.to_owned())
+        // .collect();
     // let names: Vec<String> = get_tradable_item_names_from_db();
     let pile = TradePile::new();
-    // let names = pile.items;
+    let names = pile.items;
 
     let items_data: &Vec<ItemData> = &get_item_data_from_db(names);
     println!("Bulk from db:\n{:?}", items_data);
