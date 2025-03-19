@@ -206,12 +206,18 @@ const filteredItems = computed(() => {
 const slider = ref(30)
 const minMargin = 0
 
-function copyToClipboard(text: string) {
+const clickedElement = ref<string | null>(null);
+
+function handleElementClick(text: string) {
+  clickedElement.value = text;
   navigator.clipboard.writeText(text).then(() => {
     console.log(`Copied to clipboard: ${text}`);
   }).catch(err => {
     console.error('Failed to copy text: ', err);
   });
+  setTimeout(() => {
+    clickedElement.value = null;
+  }, 1000);
 }
 
 function formatDate(dateString: string): string {
@@ -235,7 +241,8 @@ function formatDate(dateString: string): string {
     <v-data-table :sort-by="[{ key: 'margin_jita_buy', order: 'desc' }]" multi-sort :search="search" density="compact"
       :headers="headers" :items="filteredItems">
       <template v-slot:item.type_name="{ item }">
-        <span @click="copyToClipboard(item.type_name)" class="clickable">
+        <span @click="handleElementClick(item.type_name)"
+          :class="{ 'clickable': true, 'clicked': clickedElement === item.type_name }">
           {{ item.type_name }}
         </span>
       </template>
@@ -295,25 +302,6 @@ function formatDate(dateString: string): string {
 </template>
 
 <style scoped>
-.container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  /* Full viewport height */
-}
-
-.row {
-  flex: 0 0 auto;
-  /* Prevent the row from growing */
-}
-
-.v-data-table {
-  flex: 1 1 auto;
-  /* Allow the table to grow and take up available space */
-  overflow-y: auto;
-  /* Enable vertical scrolling if needed */
-}
-
 .clickable {
   cursor: pointer;
   color: blue;
@@ -325,5 +313,9 @@ function formatDate(dateString: string): string {
   /* Color on hover */
   text-decoration: underline;
   /* Underline on hover */
+}
+
+.clicked {
+  background-color: yellow; /* Highlight color */
 }
 </style>
