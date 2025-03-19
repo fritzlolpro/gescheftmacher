@@ -42,6 +42,12 @@ const headers = ref<{ title: string; align: "center" | "start" | "end"; value?: 
     value: 'margin_jita_buy',
     sortable: true
   },
+  {
+    title: 'Abroad Avg Daily',
+    align: 'center',
+    value: 'abroad_avg_daily',
+    sortable: true
+  },
 
   // Jita trade data section
   {
@@ -151,12 +157,7 @@ const headers = ref<{ title: string; align: "center" | "start" | "end"; value?: 
         value: 'abroad_sell_taxed',
         sortable: true
       },
-      {
-        title: 'Abroad Avg Daily',
-        align: 'center',
-        value: 'abroad_avg_daily',
-        sortable: true
-      }
+
     ]
   },
   {
@@ -238,8 +239,8 @@ function formatDate(dateString: string): string {
         <v-text-field v-model="slider" density="compact" type="number" hide-details single-line></v-text-field>
       </template>
     </v-slider>
-    <v-data-table :sort-by="[{ key: 'margin_jita_buy', order: 'desc' }]" multi-sort :search="search" density="compact"
-      :headers="headers" :items="filteredItems">
+    <v-data-table items-per-page="-1" :sort-by="[{ key: 'margin_jita_buy', order: 'desc' }]" multi-sort :search="search"
+      density="compact" :headers="headers" :items="filteredItems">
       <template v-slot:item.type_name="{ item }">
         <span @click="handleElementClick(item.type_name)"
           :class="{ 'clickable': true, 'clicked': clickedElement === item.type_name }">
@@ -316,6 +317,7 @@ function formatDate(dateString: string): string {
 }
 
 .clicked {
-  background-color: yellow; /* Highlight color */
+  background-color: yellow;
+  /* Highlight color */
 }
 </style>
