@@ -232,8 +232,8 @@ function formatDate(dateString: string): string {
         <v-text-field v-model="slider" density="compact" type="number" hide-details single-line></v-text-field>
       </template>
     </v-slider>
-    <v-data-table :sort-by="[{ key: 'margin_jita_buy', order: 'desc' }]"
-      multi-sort :search="search" density="compact" :headers="headers" :items="filteredItems">
+    <v-data-table :sort-by="[{ key: 'margin_jita_buy', order: 'desc' }]" multi-sort :search="search" density="compact"
+      :headers="headers" :items="filteredItems">
       <template v-slot:item.type_name="{ item }">
         <span @click="copyToClipboard(item.type_name)" class="clickable">
           {{ item.type_name }}
@@ -285,12 +285,11 @@ function formatDate(dateString: string): string {
         <span>{{ formatNumber(item.freeze_rate) }}</span>
       </template>
       <template v-slot:item.jita_trade_data.updated="{ item }">
-  <span>{{ formatDate(item.jita_trade_data.updated) }}</span>
-</template>
-
-<template v-slot:item.abroad_trade_data.updated="{ item }">
-  <span>{{ formatDate(item.abroad_trade_data.updated) }}</span>
-</template>
+        <span>{{ formatDate(item.jita_trade_data.updated) }}</span>
+      </template>
+      <template v-slot:item.abroad_trade_data.updated="{ item }">
+        <span>{{ formatDate(item.abroad_trade_data.updated) }}</span>
+      </template>
     </v-data-table>
   </main>
 </template>
@@ -299,25 +298,32 @@ function formatDate(dateString: string): string {
 .container {
   display: flex;
   flex-direction: column;
-  height: 100vh; /* Full viewport height */
+  height: 100vh;
+  /* Full viewport height */
 }
 
 .row {
-  flex: 0 0 auto; /* Prevent the row from growing */
+  flex: 0 0 auto;
+  /* Prevent the row from growing */
 }
 
 .v-data-table {
-  flex: 1 1 auto; /* Allow the table to grow and take up available space */
-  overflow-y: auto; /* Enable vertical scrolling if needed */
+  flex: 1 1 auto;
+  /* Allow the table to grow and take up available space */
+  overflow-y: auto;
+  /* Enable vertical scrolling if needed */
 }
 
 .clickable {
   cursor: pointer;
-  color: blue; /* Initial color */
+  color: blue;
+  /* Initial color */
 }
 
 .clickable:hover {
-  color: darkblue; /* Color on hover */
-  text-decoration: underline; /* Underline on hover */
+  color: darkblue;
+  /* Color on hover */
+  text-decoration: underline;
+  /* Underline on hover */
 }
 </style>
