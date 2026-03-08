@@ -1,3 +1,6 @@
+// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// #![allow(unused)]
 use serde::{Deserialize, Serialize};
 use serde_xml_rs::from_str;
 
@@ -5,15 +8,27 @@ use error_chain::error_chain;
 use struct_field_names_as_array::FieldNamesAsSlice;
 use tokio;
 
-mod ui;
-use ui::ui::{render_ui, TradeItemViewManager, TradeItemViewManagerInitData};
+use chrono;
+
+#[cfg(test)]
+mod datagetter_tests;
+
+mod static_data;
 mod datagetter;
 mod goonmetrics;
+mod watchlist;
 use datagetter::datagetter::{
-    get_item_data_from_api, get_item_data_from_db, get_tradable_item_names_from_db, merge_trade_data, ItemData, TradeData
+    create_table_and_store_data, get_item_data_from_api,
+    get_stored_items_history, merge_trade_data, ExtendedItemData,
+    ItemData, TradeData, SqlLiteConnection, DatabaseConnection,
 };
+use watchlist::watchlist::{ensure_watchlist_initialized, get_watchlist_as_item_data};
+use std::path::PathBuf;
 
-const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
+use numfmt::Formatter;
+use numfmt::Precision;
+
+const DELIVERY_PRICE_PER_CUBOMETR: f32 = 1200.0;
 const MIN_SELL_MARGIN_THRESHOLD: f32 = 1.15;
 const JITA_TAXRATE: f64 = 0.0108;
 const PROFIT_THRESHOLD: i64 = 30000000;
@@ -22,30 +37,16 @@ const MARKET_RATE_THRESHOLD: i32 = 1;
 const DAILY_VOL_THRESHOLD: i64 = 10;
 const ABROAD_TAX_VALUE: f64 = 0.056;
 
+const CACHE_EXPIRY_DURATION_MINUTES: i64 = 1200;
+
+const JITA_ID: &str = "60003760";
+const GOON_KEEP_ID: &str = "1049588174021";
+
 error_chain! {
     foreign_links {
         Io(std::io::Error);
         HttpRequest(reqwest::Error);
     }
-}
-
-#[derive(Debug, PartialEq, Clone, FieldNamesAsSlice, Deserialize, Serialize)]
-pub struct ExtendedItemData {
-    type_id: i32,
-    type_volume: f32,
-    type_name: String,
-    jita_trade_data: TradeData,
-    jita_buy_with_tax: f64,
-    abroad_trade_data: TradeData,
-    abroad_stocked_ratio: f64,
-    shipping_price: f64,
-    abroad_sell_taxed: f64,
-    abroad_avg_daily: f64,
-    profit_jita_buy_per_unit: f64,
-    profit_jita_buy_daily: f64,
-    margin_jita_buy: f64,
-    money_freeze_buy: f64,
-    freeze_rate: f64,
 }
 
 impl ItemData {
@@ -66,33 +67,48 @@ impl ItemData {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
         return abtd.sell_min - abtd.sell_min * ABROAD_TAX_VALUE;
     }
+
     pub fn get_abroad_avg_daily(&self) -> f64 {
         let abtd = &self.abroad_trade_data.as_ref().unwrap();
+
         let abstocked = &self.get_abroad_stocked_ratio();
+        if *abstocked == 0.0 {
+            return 0.0;
+        }
+
         return abtd.weekly_movement / 7.0 / f64::sqrt(*abstocked);
     }
+
     pub fn get_profit_jita_buy_per_unit(&self) -> f64 {
         return &self.get_abroad_sell_taxed()
             - &self.get_jita_buy_price_with_tax()
             - &self.get_shipping_price();
     }
+
     pub fn get_profit_jita_buy_daily(&self) -> f64 {
         return &self.get_abroad_avg_daily() * &self.get_profit_jita_buy_per_unit();
     }
+
     pub fn get_margin_jita_buy(&self) -> f64 {
         return &self.get_profit_jita_buy_per_unit()
             / (&self.get_jita_buy_price_with_tax() + &self.get_shipping_price());
     }
+
     pub fn get_money_freeze_buy(&self) -> f64 {
         return &self.get_abroad_avg_daily() * &self.get_jita_buy_price_with_tax();
     }
+
     pub fn get_freeze_rate(&self) -> f64 {
-        return &self.get_profit_jita_buy_daily() / &self.get_money_freeze_buy();
+        let mfb = &self.get_money_freeze_buy();
+        if *mfb == 0.0 {
+            return 0.0;
+        }
+        return &self.get_profit_jita_buy_daily() / mfb;
     }
 }
 
 impl ExtendedItemData {
-    fn new(data: ItemData) -> Self {
+    fn new(data: ItemData, timestamp: i64) -> Self {
         let shipping_price = data.get_shipping_price();
         let jtd = data.jita_trade_data.clone().unwrap();
         let atd = data.abroad_trade_data.clone().unwrap();
@@ -112,12 +128,13 @@ impl ExtendedItemData {
         // TODO: Add filters to display only good stuff
         ExtendedItemData {
             type_id: id,
+            timestamp: timestamp,
             type_volume: volume,
             type_name: name,
             jita_trade_data: jtd,
             jita_buy_with_tax: jtb_with_tax,
             abroad_trade_data: atd,
-            abroad_stocked_ratio: abroad_stocked_ratio,
+            abroad_stocked_ratio,
             shipping_price: shipping_price,
             abroad_sell_taxed: abroad_sell_taxed,
             abroad_avg_daily: abroad_avg_daily,
@@ -130,61 +147,160 @@ impl ExtendedItemData {
     }
 }
 
+async fn fetch_and_compute_items(items_data: Vec<ItemData>) -> Vec<ExtendedItemData> {
+    if items_data.is_empty() {
+        return vec![];
+    }
+    let item_ids: Vec<i32> = items_data.iter().map(|i| i.type_id).collect();
+    let current_time = chrono::Utc::now().timestamp();
+
+    let items_history = get_stored_items_history(&item_ids);
+    if items_history.all_ids_present_and_recent(&item_ids, CACHE_EXPIRY_DURATION_MINUTES) {
+        println!("Cache hit — skipping API.");
+        return items_history.get_most_recent_item_data();
+    }
+
+    println!("Cache miss — fetching from API.");
+    let jita_data = match get_item_data_from_api(JITA_ID, &item_ids).await {
+        Ok(d) => d,
+        Err(e) => { eprintln!("Jita API error: {:?}", e); return vec![]; }
+    };
+    let goon_data = match get_item_data_from_api(GOON_KEEP_ID, &item_ids).await {
+        Ok(d) => d,
+        Err(e) => { eprintln!("Goon API error: {:?}", e); return vec![]; }
+    };
+
+    let merged = merge_trade_data(&items_data, &jita_data, &goon_data);
+    let mut result = vec![];
+    for item in merged {
+        let ext = ExtendedItemData::new(item, current_time);
+        create_table_and_store_data(ext.clone());
+        result.push(ext);
+    }
+    result
+}
+
+fn resolve_item_names(names: &[String]) -> (Vec<ItemData>, Vec<String>) {
+    let eve_conn = SqlLiteConnection::open(PathBuf::from("src/eve.db"))
+        .expect("cannot open eve.db");
+    let mut found: Vec<ItemData> = vec![];
+    let mut not_found: Vec<String> = vec![];
+    for name in names {
+        match eve_conn.get_stored_type_data(name) {
+            Ok(data) => {
+                let volume = eve_conn
+                    .get_stored_type_volume_packed(data.type_id)
+                    .unwrap_or(data.type_volume);
+                found.push(ItemData {
+                    type_id: data.type_id,
+                    type_volume: volume,
+                    type_name: name.clone(),
+                    jita_trade_data: None,
+                    abroad_trade_data: None,
+                });
+            }
+            Err(_) => not_found.push(name.clone()),
+        }
+    }
+    (found, not_found)
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
-    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-    // let names: Vec<&str> = vec!["Tritanium", "Buzzard", "Hulk"];
-    // TODO: hardcode names cant work with 16k strings
-    // TODO: filter out items not interesting for trade dunno how
-    let names: Vec<String> = get_tradable_item_names_from_db();
-    
-    let items_data: &Vec<ItemData> = &get_item_data_from_db(names);
-    println!("Bulk from db:\n{:?}", items_data);
-
-    let item_ids: &Vec<i32> = &items_data.into_iter().map(|item| item.type_id).collect();
-    println!("IDIS:\n{:?}", item_ids);
-
-    let jita_id = "60003760";
-    let goon_keep_id = "1030049082711";
-
-    let jita_trade_data = get_item_data_from_api(&jita_id, &item_ids).await;
-    println!("JITA TRADE DATA:\n{:?}", jita_trade_data);
-
-    let goon_trade_data = get_item_data_from_api(&goon_keep_id, &item_ids).await;
-    println!("GOON TRADE DATA:\n{:?}", goon_trade_data);
-
-    let merged_trade_data = merge_trade_data(
-        &items_data,
-        &jita_trade_data.expect("hui"),
-        &goon_trade_data.expect("hui"),
-    );
-    println!("MERGED:\n{:?}", merged_trade_data);
-
-    let mut extended_data_collection = vec![];
-    for ele in merged_trade_data {
-        let extended_item_data = ExtendedItemData::new(ele.to_owned());
-        extended_data_collection.push(extended_item_data);
-    }
-
-    println!("EXTENDED DATA! \n {:?}", extended_data_collection);
-
-    let item_view_manager = TradeItemViewManager::new(TradeItemViewManagerInitData {
-        items: extended_data_collection,
-    });
-    // UI
-    match render_ui(item_view_manager) {
-        Err(_) => panic!("aaaaa"),
-        _ => (),
-    }
-
+    env_logger::init();
+    ensure_watchlist_initialized();
+    let items_data = get_watchlist_as_item_data();
+    let extended_data = fetch_and_compute_items(items_data).await;
+    run(extended_data);
     Ok(())
+}
+
+#[tauri::command]
+fn greet(name: &str) -> String {
+    format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+async fn get_prices_for_items(item_names: Vec<String>) -> String {
+    let (found_items, not_found) = resolve_item_names(&item_names);
+    let found = fetch_and_compute_items(found_items).await;
+    serde_json::to_string(&PriceQueryResult { found, not_found }).unwrap()
+}
+
+#[tauri::command]
+fn get_data(state: tauri::State<AppData>) -> String {
+    let data = state.data.clone();
+    format!("{:?}", serde_json::to_string(&data).unwrap())
+}
+
+struct AppData {
+    data: Vec<ExtendedItemData>,
+}
+
+#[derive(Serialize)]
+struct PriceQueryResult {
+    found: Vec<ExtendedItemData>,
+    not_found: Vec<String>,
+}
+use tauri::{Builder, Manager};
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run(data: Vec<ExtendedItemData>) {
+    Builder::default()
+        .setup(move |app| {
+            app.manage(AppData { data: data.clone() });
+            Ok(())
+        })
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![get_data, greet, get_prices_for_items])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+pub trait FormatForDisplay {
+    fn format_for_display(&self) -> String;
+    fn format_for_display_percentage(&self) -> String;
+}
+
+impl FormatForDisplay for f64 {
+    fn format_for_display(&self) -> String {
+        let mut f: Formatter;
+        f = "[n/ ]".parse().unwrap();
+        f = f.precision(Precision::Decimals(2));
+        let res = f.fmt2(self.to_owned());
+        return res.to_owned();
+    }
+
+    fn format_for_display_percentage(&self) -> String {
+        let mut f: Formatter;
+        f = "[.2%]".parse().unwrap();
+        f = f.precision(Precision::Decimals(2));
+        let res = f.fmt2(self.to_owned());
+        return res.to_owned();
+    }
+}
+
+impl FormatForDisplay for i64 {
+    fn format_for_display(&self) -> String {
+        let mut f: Formatter;
+        f = "[n/ ]".parse().unwrap();
+        f = f.precision(Precision::Decimals(2));
+        let res = f.fmt2(self.to_owned());
+        return res.to_owned();
+    }
+    fn format_for_display_percentage(&self) -> String {
+        let mut f: Formatter;
+        f = "[.2%]".parse().unwrap();
+        f = f.precision(Precision::Decimals(2));
+        let res = f.fmt2(self.to_owned());
+        return res.to_owned();
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::goonmetrics::goonmetrics::*;
-    use crate::ui::ui::FormatForDisplay;
+
     #[test]
     fn merge_stuff() {
         let items_data: &Vec<ItemData> = &[
