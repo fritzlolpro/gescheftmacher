@@ -177,10 +177,8 @@ async fn main() -> Result<()> {
     } else {
         println!("Some IDs are missing or not recent. Fetching data from API.");
         let jita_trade_data = get_item_data_from_api(&JITA_ID, &item_ids).await;
-        println!("JITA TRADE DATA:\n{:?}", jita_trade_data);
 
         let goon_trade_data = get_item_data_from_api(&GOON_KEEP_ID, &item_ids).await;
-        println!("GOON TRADE DATA:\n{:?}", goon_trade_data);
 
         let merged_trade_data = merge_trade_data(
             &items_data,
@@ -208,7 +206,6 @@ fn greet(name: &str) -> String {
 #[tauri::command]
 fn get_data(state: tauri::State<AppData>) -> String {
     let data = state.data.clone();
-    println!("DATA: {:?}", serde_json::to_string(&data).unwrap());
     format!("{:?}", serde_json::to_string(&data).unwrap())
 }
 

@@ -92,9 +92,6 @@ pub mod datagetter {
             for &id in ids {
                 if let Some(data_vec) = self.get_item_data(id) {
                     if let Some(max_timestamp) = data_vec.iter().map(|data| data.timestamp).max() {
-                        println!("max_timestamp: {}", max_timestamp);
-                        println!("now: {}", now);
-                        println!("max_age: {}", max_age.num_seconds());
                         if now - max_timestamp > max_age.num_seconds() {
                             return false;
                         }
