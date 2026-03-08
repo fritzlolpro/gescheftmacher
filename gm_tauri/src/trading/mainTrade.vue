@@ -2,7 +2,8 @@
 import { ref, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import type { ExtendedItemData } from "./types";
-import { TABLE_HEADERS, formatNumber, formatDate } from "./tradeUtils";
+import { TABLE_HEADERS, formatNumber, formatDate, sortItems, applyColumnClick } from "./tradeUtils";
+import type { SortItem } from "./tradeUtils";
 import ValeraMode from "./valeraMode.vue";
 
 const search = ref("")
@@ -27,9 +28,21 @@ async function get_data() {
   })
 }
 
-const filteredItems = computed(() =>
-  items.value.filter(item => item.margin_jita_buy >= slider.value)
-)
+const mainSortBy = ref<SortItem[]>([{ key: 'margin_jita_buy', order: 'desc' }])
+
+const filteredItems = computed(() => {
+  const filtered = items.value.filter(item => item.margin_jita_buy >= slider.value)
+  return sortItems(filtered, mainSortBy.value)
+})
+
+function onMainSortUpdate(newSort: SortItem[]) {
+  if (!newSort.length) { mainSortBy.value = []; return; }
+  if (newSort.length === 1) {
+    mainSortBy.value = applyColumnClick(mainSortBy.value, newSort[0].key)
+  } else {
+    mainSortBy.value = newSort
+  }
+}
 
 const clickedElement = ref<string | null>(null);
 
@@ -63,70 +76,70 @@ function handleElementClick(text: string) {
             <v-text-field v-model="slider" density="compact" type="number" hide-details single-line></v-text-field>
           </template>
         </v-slider>
-        <v-data-table items-per-page="-1" :sort-by="[{ key: 'margin_jita_buy', order: 'desc' }]" multi-sort :search="search"
-          density="compact" :headers="TABLE_HEADERS" :items="filteredItems">
-      <template v-slot:item.type_name="{ item }">
-        <span @click="handleElementClick(item.type_name)"
-          :class="{ 'clickable': true, 'clicked': clickedElement === item.type_name }">
-          {{ item.type_name }}
-        </span>
-      </template>
-      <template v-slot:item.type_volume="{ item }">
-        <span>{{ formatNumber(item.type_volume) }}</span>
-      </template>
-      <template v-slot:item.margin_jita_buy="{ item }">
-        <span>{{ formatNumber(item.margin_jita_buy) }}</span>
-      </template>
-      <template v-slot:item.jita_trade_data.buy_max="{ item }">
-        <span>{{ formatNumber(item.jita_trade_data.buy_max) }}</span>
-      </template>
-      <template v-slot:item.jita_trade_data.sell_min="{ item }">
-        <span>{{ formatNumber(item.jita_trade_data.sell_min) }}</span>
-      </template>
-      <template v-slot:item.jita_buy_with_tax="{ item }">
-        <span>{{ formatNumber(item.jita_buy_with_tax) }}</span>
-      </template>
-      <template v-slot:item.abroad_trade_data.buy_max="{ item }">
-        <span>{{ formatNumber(item.abroad_trade_data.buy_max) }}</span>
-      </template>
-      <template v-slot:item.abroad_trade_data.sell_min="{ item }">
-        <span>{{ formatNumber(item.abroad_trade_data.sell_min) }}</span>
-      </template>
-      <template v-slot:item.abroad_stocked_ratio="{ item }">
-        <span>{{ formatNumber(item.abroad_stocked_ratio) }}</span>
-      </template>
-      <template v-slot:item.shipping_price="{ item }">
-        <span>{{ formatNumber(item.shipping_price) }}</span>
-      </template>
-      <template v-slot:item.abroad_sell_taxed="{ item }">
-        <span>{{ formatNumber(item.abroad_sell_taxed) }}</span>
-      </template>
-      <template v-slot:item.abroad_avg_daily="{ item }">
-        <span>{{ formatNumber(item.abroad_avg_daily) }}</span>
-      </template>
-      <template v-slot:item.profit_jita_buy_per_unit="{ item }">
-        <span>{{ formatNumber(item.profit_jita_buy_per_unit) }}</span>
-      </template>
-      <template v-slot:item.profit_jita_buy_daily="{ item }">
-        <span>{{ formatNumber(item.profit_jita_buy_daily) }}</span>
-      </template>
-      <template v-slot:item.money_freeze_buy="{ item }">
-        <span>{{ formatNumber(item.money_freeze_buy) }}</span>
-      </template>
-      <template v-slot:item.freeze_rate="{ item }">
-        <span>{{ formatNumber(item.freeze_rate) }}</span>
-      </template>
-      <template v-slot:item.jita_trade_data.updated="{ item }">
-        <span>{{ formatDate(item.jita_trade_data.updated) }}</span>
-      </template>
-      <template v-slot:item.abroad_trade_data.updated="{ item }">
-        <span>{{ formatDate(item.abroad_trade_data.updated) }}</span>
-      </template>
-    </v-data-table>
+        <v-data-table items-per-page="-1" :sort-by="mainSortBy" @update:sort-by="onMainSortUpdate" multi-sort
+          :search="search" density="compact" :headers="TABLE_HEADERS" :items="filteredItems">
+          <template v-slot:item.type_name="{ item }">
+            <span @click="handleElementClick(item.type_name)"
+              :class="{ 'clickable': true, 'clicked': clickedElement === item.type_name }">
+              {{ item.type_name }}
+            </span>
+          </template>
+          <template v-slot:item.type_volume="{ item }">
+            <span>{{ formatNumber(item.type_volume) }}</span>
+          </template>
+          <template v-slot:item.margin_jita_buy="{ item }">
+            <span>{{ formatNumber(item.margin_jita_buy) }}</span>
+          </template>
+          <template v-slot:item.jita_trade_data.buy_max="{ item }">
+            <span>{{ formatNumber(item.jita_trade_data.buy_max) }}</span>
+          </template>
+          <template v-slot:item.jita_trade_data.sell_min="{ item }">
+            <span>{{ formatNumber(item.jita_trade_data.sell_min) }}</span>
+          </template>
+          <template v-slot:item.jita_buy_with_tax="{ item }">
+            <span>{{ formatNumber(item.jita_buy_with_tax) }}</span>
+          </template>
+          <template v-slot:item.abroad_trade_data.buy_max="{ item }">
+            <span>{{ formatNumber(item.abroad_trade_data.buy_max) }}</span>
+          </template>
+          <template v-slot:item.abroad_trade_data.sell_min="{ item }">
+            <span>{{ formatNumber(item.abroad_trade_data.sell_min) }}</span>
+          </template>
+          <template v-slot:item.abroad_stocked_ratio="{ item }">
+            <span>{{ formatNumber(item.abroad_stocked_ratio) }}</span>
+          </template>
+          <template v-slot:item.shipping_price="{ item }">
+            <span>{{ formatNumber(item.shipping_price) }}</span>
+          </template>
+          <template v-slot:item.abroad_sell_taxed="{ item }">
+            <span>{{ formatNumber(item.abroad_sell_taxed) }}</span>
+          </template>
+          <template v-slot:item.abroad_avg_daily="{ item }">
+            <span>{{ formatNumber(item.abroad_avg_daily) }}</span>
+          </template>
+          <template v-slot:item.profit_jita_buy_per_unit="{ item }">
+            <span>{{ formatNumber(item.profit_jita_buy_per_unit) }}</span>
+          </template>
+          <template v-slot:item.profit_jita_buy_daily="{ item }">
+            <span>{{ formatNumber(item.profit_jita_buy_daily) }}</span>
+          </template>
+          <template v-slot:item.money_freeze_buy="{ item }">
+            <span>{{ formatNumber(item.money_freeze_buy) }}</span>
+          </template>
+          <template v-slot:item.freeze_rate="{ item }">
+            <span>{{ formatNumber(item.freeze_rate) }}</span>
+          </template>
+          <template v-slot:item.jita_trade_data.updated="{ item }">
+            <span>{{ formatDate(item.jita_trade_data.updated) }}</span>
+          </template>
+          <template v-slot:item.abroad_trade_data.updated="{ item }">
+            <span>{{ formatDate(item.abroad_trade_data.updated) }}</span>
+          </template>
+        </v-data-table>
       </v-window-item>
 
       <!-- ===== VALERA_MOD TAB ===== -->
-      <v-window-item value="valera">
+      <v-window-item value="valera" eager>
         <ValeraMode :items="items" />
       </v-window-item>
 
@@ -139,10 +152,12 @@ function handleElementClick(text: string) {
   cursor: pointer;
   color: blue;
 }
+
 .clickable:hover {
   color: darkblue;
   text-decoration: underline;
 }
+
 .clicked {
   background-color: yellow;
 }

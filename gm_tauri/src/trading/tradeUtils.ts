@@ -7,6 +7,40 @@ export function formatDate(dateString: string): string {
   return date.toLocaleString();
 }
 
+export interface SortItem { key: string; order: 'asc' | 'desc' }
+
+function getNestedValue(obj: unknown, path: string): unknown {
+  return path.split('.').reduce(
+    (acc: unknown, key) => acc != null ? (acc as Record<string, unknown>)[key] : undefined,
+    obj
+  );
+}
+
+export function sortItems<T>(items: T[], sortBy: SortItem[]): T[] {
+  if (!sortBy.length) return items;
+  return [...items].sort((a, b) => {
+    for (const { key, order } of sortBy) {
+      const aVal = getNestedValue(a, key);
+      const bVal = getNestedValue(b, key);
+      const mult = order === 'desc' ? -1 : 1;
+      if (aVal == null && bVal == null) continue;
+      if (aVal == null) return mult;
+      if (bVal == null) return -mult;
+      if (aVal < bVal) return -mult;
+      if (aVal > bVal) return mult;
+    }
+    return 0;
+  });
+}
+
+/** Обрабатывает клик по столбцу: добавляет/цикличит/удаляет из multi-sort без Shift. */
+export function applyColumnClick(sortBy: SortItem[], key: string): SortItem[] {
+  const idx = sortBy.findIndex(s => s.key === key);
+  if (idx < 0) return [...sortBy, { key, order: 'asc' }];
+  if (sortBy[idx].order === 'asc') return sortBy.map(s => s.key === key ? { key, order: 'desc' } : s);
+  return sortBy.filter(s => s.key !== key);
+}
+
 type HeaderAlign = "center" | "start" | "end";
 interface ChildHeader { title: string; align: HeaderAlign; value: string; sortable?: boolean }
 interface Header { title: string; align: HeaderAlign; value?: string; sortable?: boolean; children?: ChildHeader[] }

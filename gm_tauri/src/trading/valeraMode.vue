@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import type { ExtendedItemData } from "./types";
-import { TABLE_HEADERS, formatNumber, formatDate } from "./tradeUtils";
+import { TABLE_HEADERS, formatNumber, formatDate, sortItems, applyColumnClick } from "./tradeUtils";
+import type { SortItem } from "./tradeUtils";
 
 const props = defineProps<{
   items: ExtendedItemData[]
@@ -17,14 +18,26 @@ const VALERA_SETTINGS = {
   jitaTaxRate: 0.015,
 }
 
+const sortBy = ref<SortItem[]>([{ key: 'abroad_avg_daily', order: 'desc' }])
+
 const valeraItems = computed(() => {
-  return props.items.filter(item =>
+  const filtered = props.items.filter(item =>
     item.margin_jita_buy >= VALERA_SETTINGS.minSellMargin &&
     item.profit_jita_buy_daily >= VALERA_SETTINGS.profitThreshold &&
     item.freeze_rate >= VALERA_SETTINGS.freezeRateThreshold &&
     item.abroad_avg_daily >= VALERA_SETTINGS.dailyVol
   )
+  return sortItems(filtered, sortBy.value)
 })
+
+function onSortUpdate(newSort: SortItem[]) {
+  if (!newSort.length) { sortBy.value = []; return; }
+  if (newSort.length === 1) {
+    sortBy.value = applyColumnClick(sortBy.value, newSort[0].key)
+  } else {
+    sortBy.value = newSort
+  }
+}
 
 const clickedElement = ref<string | null>(null)
 
@@ -50,7 +63,8 @@ function handleElementClick(text: string) {
 
   <v-data-table
     items-per-page="-1"
-    :sort-by="[{ key: 'profit_jita_buy_daily', order: 'desc' }]"
+    :sort-by="sortBy"
+    @update:sort-by="onSortUpdate"
     multi-sort
     density="compact"
     :headers="TABLE_HEADERS"
