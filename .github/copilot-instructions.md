@@ -25,11 +25,19 @@ gm_tauri/
   src-tauri/
     src/
       main.rs                 # Точка входа: tokio::main → fetch data → start Tauri
-      datagetter.rs           # Вся логика работы с данными и SQLite
+      datagetter.rs           # Логика API, SQLite (кэш цен), merge данных
       goonmetrics.rs          # Парсинг XML ответов Goonmetrics API
-      static_data.rs          # ВРЕМЕННЫЙ хардкод списка предметов (заменить на watchlist из DB)
+      watchlist.rs            # Watchlist: таблицы DB, CSV импорт, чтение предметов
+      static_data.rs          # УСТАРЕЛО — старый хардкод списка предметов (не используется)
     Cargo.toml
     tauri.conf.json
+  watchlist/                  # CSV файлы с предметами по группам
+    Ammo.csv
+    Drones.csv
+    ImplantsBoosters.csv
+    ManufactureResearch.csv
+    ShipEquipment.csv
+    Ships.csv
 ```
 
 ## Как запускать
@@ -98,32 +106,26 @@ GOON_KEEP_ID = "1046664001931"         // ID торгового хаба Гун�
 
 ## Watchlist CSV формат
 
-CSV файлы лежат в `gm_tauri/watchlist/` по группам:
-```
-watchlist/
-  ammo.csv
-  modules.csv
-  ships.csv
-  implants.csv
-  ...
-```
+CSV файлы лежат в `gm_tauri/watchlist/` по группам (экспорт из Excel).
+Формат: первые три колонки — `ItemName, ItemId, vol.` Остальные колонки игнорируются.
+Числа могут быть в quoted-формате с запятыми (`"2,500"`) — парсер в `watchlist.rs` это обрабатывает.
 
-Формат CSV (с заголовком):
 ```csv
-name,type_id,volume
-Barrage L,27405,0.0125
-Void L,11689,0.0125
+ItemName,ItemId,vol.,... (остальные колонки игнорируются)
+Astero,33468,"2,500",...
+Focused Void Bomb,34264,75.0000,...
 ```
 
-Если `type_id` или `volume` = 0 / пустое → берём из `eve.db` по имени.
+Если `ItemId=0` или `vol=0` → данные резолвятся из `eve.db` по имени.
 
 ## Поток данных при старте приложения
 
 ```
 main() (tokio::main)
-  ├── читаем watchlist из gescheftmacher.db (watchlist_items) 
-  │      или пока из static_data.rs TradePile (ВРЕМЕННО)
-  ├── get_item_data_from_db() → ищем id/volume в eve.db
+  ├── ensure_watchlist_initialized() (watchlist.rs)
+  │      ├── создаёт таблицы watchlist_groups / watchlist_items если нет
+  │      └── если watchlist пуст → импортирует все CSV из gm_tauri/watchlist/
+  ├── get_watchlist_as_item_data() → Vec<ItemData> из watchlist_items (active=1)
   ├── get_stored_items_history() → проверяем кэш в gescheftmacher.db
   ├── если кэш свежий (<2ч) → берём из кэша
   └── если кэш устарел → get_item_data_from_api() → сохраняем в кэш
@@ -142,11 +144,10 @@ main() (tokio::main)
 
 ## Текущие TODO в коде
 
-1. `static_data.rs` (TradePile) → заменить на чтение watchlist из DB
-2. CSV импорт → наполнить watchlist таблицу
-3. Фильтры в UI → уже частично сделан slider по margin, нужно больше
-4. Пути к БД файлам сделать абсолютными (сейчас относительные — `src/gescheftmacher.db`)
-5. Обработка ошибок в `merge_trade_data` — сейчас `panic!`
+1. `static_data.rs` (TradePile) → не используется, можно удалить
+2. Фильтры в UI → уже частично сделан slider по margin, нужно больше
+3. Пути к БД файлам сделать абсолютными (сейчас относительные — `src/gescheftmacher.db`)
+4. Обработка ошибок в `merge_trade_data` — сейчас `panic!`
 
 ## Важные нюансы
 

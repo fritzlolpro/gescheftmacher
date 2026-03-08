@@ -16,16 +16,18 @@ mod datagetter_tests;
 mod static_data;
 mod datagetter;
 mod goonmetrics;
+mod watchlist;
 use datagetter::datagetter::{
-    create_table_and_store_data, ensure_watchlist_initialized, get_item_data_from_api,
-    get_stored_items_history, get_watchlist_as_item_data, merge_trade_data, ExtendedItemData,
+    create_table_and_store_data, get_item_data_from_api,
+    get_stored_items_history, merge_trade_data, ExtendedItemData,
     ItemData, TradeData,
 };
+use watchlist::watchlist::{ensure_watchlist_initialized, get_watchlist_as_item_data};
 
 use numfmt::Formatter;
 use numfmt::Precision;
 
-const DELIVERY_PRICE_PER_CUBOMETR: f32 = 850.0;
+const DELIVERY_PRICE_PER_CUBOMETR: f32 = 1200.0;
 const MIN_SELL_MARGIN_THRESHOLD: f32 = 1.15;
 const JITA_TAXRATE: f64 = 0.0108;
 const PROFIT_THRESHOLD: i64 = 30000000;
@@ -34,10 +36,10 @@ const MARKET_RATE_THRESHOLD: i32 = 1;
 const DAILY_VOL_THRESHOLD: i64 = 10;
 const ABROAD_TAX_VALUE: f64 = 0.056;
 
-const CACHE_EXPIRY_DURATION_MINUTES: i64 = 120;
+const CACHE_EXPIRY_DURATION_MINUTES: i64 = 1200;
 
 const JITA_ID: &str = "60003760";
-const GOON_KEEP_ID: &str = "1046664001931";
+const GOON_KEEP_ID: &str = "1049588174021";
 
 error_chain! {
     foreign_links {
@@ -154,10 +156,10 @@ async fn main() -> Result<()> {
     ensure_watchlist_initialized();
     let items_data_owned: Vec<ItemData> = get_watchlist_as_item_data();
     let items_data: &Vec<ItemData> = &items_data_owned;
-    println!("Bulk from db:\n{:?}", items_data);
+    // println!("Bulk from db:\n{:?}", items_data);
 
     let item_ids: &Vec<i32> = &items_data.into_iter().map(|item| item.type_id).collect();
-    println!("IDIS:\n{:?}", item_ids);
+    // println!("IDIS:\n{:?}", item_ids);
 
     let current_time = chrono::Utc::now().timestamp();
 
