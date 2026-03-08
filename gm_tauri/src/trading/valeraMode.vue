@@ -30,6 +30,16 @@ const valeraItems = computed(() => {
   return sortItems(filtered, sortBy.value)
 })
 
+const totalMoneyFreeze = computed(() =>
+  valeraItems.value.reduce((sum, item) => sum + (item.money_freeze_buy as number), 0)
+)
+const totalDailyProfit = computed(() =>
+  valeraItems.value.reduce((sum, item) => sum + (item.profit_jita_buy_daily as number), 0)
+)
+const totalVolume = computed(() =>
+  valeraItems.value.reduce((sum, item) => sum + (item.type_volume as number) * (item.abroad_avg_daily as number), 0)
+)
+
 function onSortUpdate(newSort: SortItem[]) {
   if (!newSort.length) { sortBy.value = []; return; }
   if (newSort.length === 1) {
@@ -59,6 +69,10 @@ function handleElementClick(text: string) {
     <v-chip size="small" color="grey-lighten-2">Delivery: {{ VALERA_SETTINGS.deliveryPerM3 }} ISK/m³</v-chip>
     <v-chip size="small" color="grey-lighten-2">Jita tax: {{ VALERA_SETTINGS.jitaTaxRate }}</v-chip>
     <v-chip size="small" color="green-lighten-3">{{ valeraItems.length }} items</v-chip>
+    <v-divider vertical class="mx-1" />
+    <v-chip size="small" color="orange-lighten-3">Freeze: {{ formatNumber(totalMoneyFreeze) }} ISK</v-chip>
+    <v-chip size="small" color="purple-lighten-3">Daily Vol: {{ formatNumber(totalVolume) }} m³</v-chip>
+    <v-chip size="small" color="green-darken-1" text-color="white">Profit/day: {{ formatNumber(totalDailyProfit) }} ISK</v-chip>
   </div>
 
   <v-data-table
