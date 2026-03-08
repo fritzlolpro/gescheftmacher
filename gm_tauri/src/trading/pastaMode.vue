@@ -64,6 +64,7 @@ interface ResolvedItem {
   profit_jita_buy_per_unit: number
   margin_jita_buy: number
   shipping_price: number
+  money_freeze_buy: number
 }
 
 interface ResolvedGroup {
@@ -74,6 +75,7 @@ interface ResolvedGroup {
   totalFitCost: number
   totalFitVolume: number
   totalShipping: number
+  totalMoneyFreeze: number
 }
 
 const resolvedGroups = computed<ResolvedGroup[]>(() => {
@@ -101,14 +103,16 @@ const resolvedGroups = computed<ResolvedGroup[]>(() => {
         profit_jita_buy_per_unit: pd?.profit_jita_buy_per_unit ?? 0,
         margin_jita_buy: pd?.margin_jita_buy ?? 0,
         shipping_price: pd?.shipping_price ?? 0,
+        money_freeze_buy: fi.qty * jbu,
       }
     })
 
     const totalFitCost = items.reduce((s, i) => s + i.fit_cost, 0)
     const totalFitVolume = items.reduce((s, i) => s + i.fit_volume, 0)
     const totalShipping = items.reduce((s, i) => s + i.shipping_price * i.qty, 0)
+    const totalMoneyFreeze = items.reduce((s, i) => s + i.money_freeze_buy, 0)
 
-    return { fitName: group.fitName, shipName: group.shipName, items, multiplier: mult, totalFitCost, totalFitVolume, totalShipping }
+    return { fitName: group.fitName, shipName: group.shipName, items, multiplier: mult, totalFitCost, totalFitVolume, totalShipping, totalMoneyFreeze }
   })
 })
 
@@ -172,8 +176,9 @@ const PASTA_HEADERS: { title: string; align: HA; value: string; sortable?: boole
   { title: 'Shipping/unit',align: 'center', value: 'shipping_price',         sortable: true },
   { title: 'Fit Cost',     align: 'center', value: 'fit_cost',               sortable: true },
   { title: 'Fit Vol m³',   align: 'center', value: 'fit_volume',             sortable: true },
-  { title: 'Total Cost ×N',align: 'center', value: 'total_cost',             sortable: true },
-  { title: 'Total Vol ×N', align: 'center', value: 'total_volume',           sortable: true },
+  { title: 'Total Cost ×N',  align: 'center', value: 'total_cost',               sortable: true },
+  { title: 'Total Vol ×N',   align: 'center', value: 'total_volume',              sortable: true },
+  { title: 'Money Freeze',   align: 'center', value: 'money_freeze_buy',          sortable: true },
 ]
 
 function groupLabel(g: ResolvedGroup): string {
@@ -228,6 +233,9 @@ function groupLabel(g: ResolvedGroup): string {
         </v-chip>
         <v-chip size="small" color="teal-lighten-3">
           Shipping: {{ formatNumber(group.totalShipping) }} ISK
+        </v-chip>
+        <v-chip size="small" color="orange-darken-1">
+          Freeze: {{ formatNumber(group.totalMoneyFreeze) }} ISK
         </v-chip>
         <v-chip v-if="group.multiplier > 1" size="small" color="green-lighten-3">
           Total ×{{ group.multiplier }} Cost:
@@ -290,6 +298,9 @@ function groupLabel(g: ResolvedGroup): string {
         </template>
         <template v-slot:item.total_volume="{ item }">
           <span>{{ item.found ? formatNumber(item.total_volume) : '—' }}</span>
+        </template>
+        <template v-slot:item.money_freeze_buy="{ item }">
+          <span>{{ item.found ? formatNumber(item.money_freeze_buy) : '—' }}</span>
         </template>
       </v-data-table>
     </div>
