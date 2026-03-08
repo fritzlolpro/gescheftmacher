@@ -5,6 +5,7 @@ import type { ExtendedItemData } from "./types";
 import { formatNumber, formatDate, sortItems, applyColumnClick, useCollapsibleHeaders } from "./tradeUtils";
 import type { SortItem } from "./tradeUtils";
 import ValeraMode from "./valeraMode.vue";
+import PastaMode from "./pastaMode.vue";
 
 const search = ref("")
 const tab = ref('main')
@@ -62,6 +63,7 @@ function handleElementClick(text: string) {
     <v-tabs v-model="tab" bg-color="primary">
       <v-tab value="main">Main</v-tab>
       <v-tab value="valera">VALERA_MOD</v-tab>
+      <v-tab value="pasta">PASTA</v-tab>
     </v-tabs>
 
     <v-window v-model="tab">
@@ -150,6 +152,11 @@ function handleElementClick(text: string) {
       <!-- ===== VALERA_MOD TAB ===== -->
       <v-window-item value="valera" eager>
         <ValeraMode :items="items" />
+      </v-window-item>
+
+      <!-- ===== PASTA TAB ===== -->
+      <v-window-item value="pasta" eager>
+        <PastaMode :items="items" />
       </v-window-item>
 
     </v-window>

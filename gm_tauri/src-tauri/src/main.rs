@@ -20,9 +20,10 @@ mod watchlist;
 use datagetter::datagetter::{
     create_table_and_store_data, get_item_data_from_api,
     get_stored_items_history, merge_trade_data, ExtendedItemData,
-    ItemData, TradeData,
+    ItemData, TradeData, SqlLiteConnection, DatabaseConnection,
 };
 use watchlist::watchlist::{ensure_watchlist_initialized, get_watchlist_as_item_data};
+use std::path::PathBuf;
 
 use numfmt::Formatter;
 use numfmt::Precision;
@@ -146,61 +147,84 @@ impl ExtendedItemData {
     }
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<()> {
-    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-    // let names: Vec<String> = vec!["Hulk", "Tritanium", "Zainou 'Gypsy' CPU Management EE-602"]
-        // .into_iter()
-        // .map(|s| s.to_owned())
-        // .collect();
-    ensure_watchlist_initialized();
-    let items_data_owned: Vec<ItemData> = get_watchlist_as_item_data();
-    let items_data: &Vec<ItemData> = &items_data_owned;
-    // println!("Bulk from db:\n{:?}", items_data);
-
-    let item_ids: &Vec<i32> = &items_data.into_iter().map(|item| item.type_id).collect();
-    // println!("IDIS:\n{:?}", item_ids);
-
+async fn fetch_and_compute_items(items_data: Vec<ItemData>) -> Vec<ExtendedItemData> {
+    if items_data.is_empty() {
+        return vec![];
+    }
+    let item_ids: Vec<i32> = items_data.iter().map(|i| i.type_id).collect();
     let current_time = chrono::Utc::now().timestamp();
 
-    let items_history_data = get_stored_items_history(item_ids);
-    // if some here cuz db could be not here
-
-    
-    let has_fresh_chached_data = items_history_data.all_ids_present_and_recent(item_ids, CACHE_EXPIRY_DURATION_MINUTES);
-
-    let mut extended_data_collection: Vec<ExtendedItemData> = vec![];
-
-    if has_fresh_chached_data {
-        println!("All IDs are present and recent. Skipping API request.");
-        extended_data_collection = items_history_data.get_most_recent_item_data()
-    } else {
-        println!("Some IDs are missing or not recent. Fetching data from API.");
-        let jita_trade_data = get_item_data_from_api(&JITA_ID, &item_ids).await;
-
-        let goon_trade_data = get_item_data_from_api(&GOON_KEEP_ID, &item_ids).await;
-
-        let merged_trade_data = merge_trade_data(
-            &items_data,
-            &jita_trade_data.expect("hui"),
-            &goon_trade_data.expect("hui"),
-        );
-
-        for ele in merged_trade_data {
-            let extended_item_data = ExtendedItemData::new(ele.to_owned(), current_time);
-            create_table_and_store_data(extended_item_data.clone());
-            extended_data_collection.push(extended_item_data);
-        }
+    let items_history = get_stored_items_history(&item_ids);
+    if items_history.all_ids_present_and_recent(&item_ids, CACHE_EXPIRY_DURATION_MINUTES) {
+        println!("Cache hit — skipping API.");
+        return items_history.get_most_recent_item_data();
     }
 
-    run(extended_data_collection.clone());
+    println!("Cache miss — fetching from API.");
+    let jita_data = match get_item_data_from_api(JITA_ID, &item_ids).await {
+        Ok(d) => d,
+        Err(e) => { eprintln!("Jita API error: {:?}", e); return vec![]; }
+    };
+    let goon_data = match get_item_data_from_api(GOON_KEEP_ID, &item_ids).await {
+        Ok(d) => d,
+        Err(e) => { eprintln!("Goon API error: {:?}", e); return vec![]; }
+    };
 
+    let merged = merge_trade_data(&items_data, &jita_data, &goon_data);
+    let mut result = vec![];
+    for item in merged {
+        let ext = ExtendedItemData::new(item, current_time);
+        create_table_and_store_data(ext.clone());
+        result.push(ext);
+    }
+    result
+}
+
+fn resolve_item_names(names: &[String]) -> (Vec<ItemData>, Vec<String>) {
+    let eve_conn = SqlLiteConnection::open(PathBuf::from("src/eve.db"))
+        .expect("cannot open eve.db");
+    let mut found: Vec<ItemData> = vec![];
+    let mut not_found: Vec<String> = vec![];
+    for name in names {
+        match eve_conn.get_stored_type_data(name) {
+            Ok(data) => {
+                let volume = eve_conn
+                    .get_stored_type_volume_packed(data.type_id)
+                    .unwrap_or(data.type_volume);
+                found.push(ItemData {
+                    type_id: data.type_id,
+                    type_volume: volume,
+                    type_name: name.clone(),
+                    jita_trade_data: None,
+                    abroad_trade_data: None,
+                });
+            }
+            Err(_) => not_found.push(name.clone()),
+        }
+    }
+    (found, not_found)
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<()> {
+    env_logger::init();
+    ensure_watchlist_initialized();
+    let items_data = get_watchlist_as_item_data();
+    let extended_data = fetch_and_compute_items(items_data).await;
+    run(extended_data);
     Ok(())
 }
 
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+async fn get_prices_for_items(item_names: Vec<String>) -> String {
+    let (found_items, not_found) = resolve_item_names(&item_names);
+    let found = fetch_and_compute_items(found_items).await;
+    serde_json::to_string(&PriceQueryResult { found, not_found }).unwrap()
 }
 
 #[tauri::command]
@@ -212,6 +236,12 @@ fn get_data(state: tauri::State<AppData>) -> String {
 struct AppData {
     data: Vec<ExtendedItemData>,
 }
+
+#[derive(Serialize)]
+struct PriceQueryResult {
+    found: Vec<ExtendedItemData>,
+    not_found: Vec<String>,
+}
 use tauri::{Builder, Manager};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(data: Vec<ExtendedItemData>) {
@@ -221,7 +251,7 @@ pub fn run(data: Vec<ExtendedItemData>) {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_data, greet])
+        .invoke_handler(tauri::generate_handler![get_data, greet, get_prices_for_items])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
