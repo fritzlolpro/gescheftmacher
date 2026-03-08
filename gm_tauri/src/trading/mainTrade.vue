@@ -2,7 +2,7 @@
 import { ref, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import type { ExtendedItemData } from "./types";
-import { TABLE_HEADERS, formatNumber, formatDate, sortItems, applyColumnClick } from "./tradeUtils";
+import { formatNumber, formatDate, sortItems, applyColumnClick, useCollapsibleHeaders } from "./tradeUtils";
 import type { SortItem } from "./tradeUtils";
 import ValeraMode from "./valeraMode.vue";
 
@@ -29,6 +29,8 @@ async function get_data() {
 }
 
 const mainSortBy = ref<SortItem[]>([{ key: 'margin_jita_buy', order: 'desc' }])
+
+const { headers: activeHeaders, toggleGroup, isCollapsed, groupTitles } = useCollapsibleHeaders()
 
 const filteredItems = computed(() => {
   const filtered = items.value.filter(item => item.margin_jita_buy >= slider.value)
@@ -76,8 +78,15 @@ function handleElementClick(text: string) {
             <v-text-field v-model="slider" density="compact" type="number" hide-details single-line></v-text-field>
           </template>
         </v-slider>
+        <div class="group-toggles">
+          <v-chip v-for="g in groupTitles" :key="g" size="small"
+            :color="isCollapsed(g) ? 'grey-lighten-2' : 'blue-grey-lighten-3'"
+            @click="toggleGroup(g)" style="cursor:pointer">
+            {{ isCollapsed(g) ? '▶' : '▼' }} {{ g }}
+          </v-chip>
+        </div>
         <v-data-table items-per-page="-1" :sort-by="mainSortBy" @update:sort-by="onMainSortUpdate" multi-sort
-          :search="search" density="compact" :headers="TABLE_HEADERS" :items="filteredItems">
+          :search="search" density="compact" :headers="activeHeaders" :items="filteredItems">
           <template v-slot:item.type_name="{ item }">
             <span @click="handleElementClick(item.type_name)"
               :class="{ 'clickable': true, 'clicked': clickedElement === item.type_name }">

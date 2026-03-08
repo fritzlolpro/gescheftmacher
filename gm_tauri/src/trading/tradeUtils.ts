@@ -1,3 +1,5 @@
+import { ref, computed } from 'vue'
+
 const numberFormatter = new Intl.NumberFormat('ru-RU', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -85,3 +87,27 @@ export const TABLE_HEADERS: Header[] = [
   { title: 'Money Freeze Buy', align: 'center', value: 'money_freeze_buy', sortable: true },
   { title: 'Freeze Rate',      align: 'center', value: 'freeze_rate',      sortable: true },
 ];
+
+export function useCollapsibleHeaders() {
+  const collapsed = ref(new Set<string>())
+
+  const groupTitles = TABLE_HEADERS
+    .filter(h => h.children)
+    .map(h => h.title)
+
+  const headers = computed(() =>
+    TABLE_HEADERS.filter(h => !(h.children && collapsed.value.has(h.title)))
+  )
+
+  function toggleGroup(title: string) {
+    const s = new Set(collapsed.value)
+    s.has(title) ? s.delete(title) : s.add(title)
+    collapsed.value = s
+  }
+
+  function isCollapsed(title: string) {
+    return collapsed.value.has(title)
+  }
+
+  return { headers, toggleGroup, isCollapsed, groupTitles }
+}
