@@ -1,5 +1,10 @@
+const numberFormatter = new Intl.NumberFormat('ru-RU', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
 export function formatNumber(value: number): string {
-  return value.toFixed(2);
+  return numberFormatter.format(value);
 }
 
 export function formatDate(dateString: string): string {
