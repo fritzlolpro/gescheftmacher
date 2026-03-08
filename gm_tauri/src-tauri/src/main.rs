@@ -14,12 +14,12 @@ use chrono;
 mod datagetter_tests;
 
 mod static_data;
-use static_data::static_data::TradePile;
 mod datagetter;
 mod goonmetrics;
 use datagetter::datagetter::{
-    create_table_and_store_data, get_item_data_from_api, get_item_data_from_db,
-    get_stored_items_history, merge_trade_data, ExtendedItemData, ItemData, TradeData,
+    create_table_and_store_data, ensure_watchlist_initialized, get_item_data_from_api,
+    get_stored_items_history, get_watchlist_as_item_data, merge_trade_data, ExtendedItemData,
+    ItemData, TradeData,
 };
 
 use numfmt::Formatter;
@@ -151,11 +151,9 @@ async fn main() -> Result<()> {
         // .into_iter()
         // .map(|s| s.to_owned())
         // .collect();
-    // let names: Vec<String> = get_tradable_item_names_from_db();
-    let pile = TradePile::new();
-    let names = pile.items;
-
-    let items_data: &Vec<ItemData> = &get_item_data_from_db(names);
+    ensure_watchlist_initialized();
+    let items_data_owned: Vec<ItemData> = get_watchlist_as_item_data();
+    let items_data: &Vec<ItemData> = &items_data_owned;
     println!("Bulk from db:\n{:?}", items_data);
 
     let item_ids: &Vec<i32> = &items_data.into_iter().map(|item| item.type_id).collect();
